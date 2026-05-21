@@ -7,15 +7,6 @@ local images = require('images') -- Load Windower's image primitive library
 -- Active tracking table for ticking down live timers
 active_network_timers = {}
 
--- Define your precise UI display layout adjustments
-UI_Layout = {
-    base_x = 20,      
-    base_y = 200,      
-    column_width = 160, 
-    row_height = 18,    
-    bar_width = 15,     
-}
-
 -- ====================================================================
 -- INITIALIZATION & COLUMN LAYOUT SETUP
 -- ====================================================================
@@ -25,28 +16,6 @@ timer_display_rows = {}
 -- Storage tables to track graphical role icons
 caster_icons = {}
 target_icons = {}
-
--- Normalized indexing table to ensure perfect mathematical mapping across all loops
-local char_columns = {
-    ['Makaria']  = 1,
-    ['Amaranti'] = 2,
-    ['Aenura']   = 3,
-    ['Midnaria'] = 4,
-    ['Entrapta'] = 5,
-    ['Luccaria'] = 6
-}
-
-function get_character_column(char_name)
-    if not char_name then return 1 end
-    -- Normalize the input name to match the keys in your table
-    local name = char_name:lower()
-    for k, v in pairs(char_columns) do
-        if k:lower() == name then
-            return v
-        end
-    end
-    return 1 -- Fallback
-end
 
 function initialize_column_headers()
     local names = {'Makaria', 'Amaranti', 'Aenura', 'Midnaria', 'Entrapta', 'Luccaria'}
@@ -107,16 +76,6 @@ function set_caster(name)
     end
 end
 
-elements = {}
-elements.list = S{'Light','Dark','Fire','Ice','Wind','Earth','Lightning','Water'}
-elements.weak_to = {['Light']='Dark', ['Dark']='Light', ['Fire']='Ice', ['Ice']='Wind', ['Wind']='Earth', ['Earth']='Lightning', ['Lightning']='Water', ['Water']='Fire'}
-elements.storm_of = {['Light']="Aurorastorm", ['Dark']="Voidstorm", ['Fire']="Firestorm", ['Earth']="Sandstorm", ['Water']="Rainstorm", ['Wind']="Windstorm", ['Ice']="Hailstorm", ['Lightning']="Thunderstorm"}
-elements.helix_of = {['Light']="Luminohelix", ['Dark']="Noctohelix", ['Fire']="Pyrohelix", ['Earth']="Geohelix", ['Water']="Hydrohelix", ['Wind']="Anemohelix", ['Ice']="Cryohelix", ['Lightning']="Ionohelix"}
-elements.of_helix = {['luminohelix']="Light", ['noctohelix']="Dark", ['pyrohelix']="Fire", ['geohelix']="Earth", ['hydrohelix']="Water", ['anemohelix']="Wind", ['cryohelix']="Ice", ['ionohelix']="Lightning"}
-elements.strong_to = {['Light']='Dark', ['Dark']='Light', ['Fire']='Water', ['Ice']='Fire', ['Wind']='Ice', ['Earth']='Wind', ['Lightning']='Earth', ['Water']='Lightning'}
-		
-helix = {'Luminohelix','Noctohelix','Pyrohelix','Geohelix', 'Hydrohelix','Anemohelix','Cryohelix','Ionohelix'}
-
 function setupCommands() 
     windower.send_command('bind ^f1 exec Makaria.txt')
     windower.send_command('bind ^f2 exec Amaranti.txt')
@@ -134,80 +93,6 @@ function setupCommands()
 
 	windower.send_command('bind !` send @all box target <t>')
 end
-
-find_items = function(ids)
-    local res_set = S{}
-    local found = 0
-    
-    for bag_id = 0, 12 do 
-        local bag_info = windower.ffxi.get_bag_info(bag_id)
-        if bag_info and bag_info.enabled then
-            for _, item in ipairs(windower.ffxi.get_items(bag_id)) do
-                if item and ids:contains(item.id) then
-                    local count = item.count
-                    found = found + count
-                    res_set:add({
-                        bag = bag_id,
-                        slot = item.slot,
-                        count = count,
-                        id = item.id,
-                    })
-                end
-            end
-        end
-    end
-    return res_set, found
-end
-
-function getNinjaTool(ability)
-	local tools = {['katon'] = 'Uchitake', ['suiton'] = 'Mizu-Deppo', ['raiton'] = 'Hiraishin', ['doton'] = 'Makibishi',
-		['huton'] = 'Kawahori-Ogi', ['hyoton'] = 'Tsurara', ['utsusemi'] = 'Shihei', ['migawari'] = 'Mokujin', ['kakka'] = 'Ryuno',
-		['gekka'] = 'Ranka', ['yain'] = 'Furusumi', ['myoshu'] = 'Kabenro', ['monomi'] = 'Sanjaku-Tenugui', ['tonko'] = 'Shinobi-Tabi',
-		['kurayami'] = 'Sairui-Ran', ['hojo'] = 'Kaginawa', ['dokumori'] = 'Kodoku', ['jubaku'] = 'Jusatsu', ['aisha'] = 'Soshi',
-		['yurin'] = 'Jinko'}
-	local bags = {['katon'] = 'Toolbag (Uchi)', ['suiton'] = 'Toolbag (Mizu)', ['raiton'] = 'Toolbag (Hira)', ['doton'] = 'Toolbag (Maki)',
-		['huton'] = 'Toolbag (Kawa)', ['hyoton'] = 'Toolbag (Tsura)', ['utsusemi'] = 'Toolbag (Shihe)', ['migawari'] = 'Toolbag (Moku)', 
-		['kakka'] = 'Toolbag (Ryuno)', ['gekka'] = 'Toolbag (Ranka)', ['yain'] = 'Toolbag (Furu)', ['myoshu'] = 'Toolbag (Kaben)', 
-		['monomi'] = 'Toolbag (Sanja)', ['tonko'] = 'Toolbag (Shino)', ['kurayami'] = 'Toolbag (Sai)', ['hojo'] = 'Toolbag (Kagi)', 
-		['dokumori'] = 'Toolbag (Kodo)', ['jubaku'] = 'Toolbag (Jusa)', ['aisha'] = 'Toolbag (Soshi)', ['yurin'] = 'Toolbag (Jinko)'}
-	
-	local item_name = tools[ability]
-	local item_ids = (S(res.items:name(windower.wc_match-{item_name})) + S(res.items:name_log(windower.wc_match-{item_name}))):map(table.get-{'id'})
-	
-	item_name = bags[ability]
-	local toolbag_ids = (S(res.items:name(windower.wc_match-{item_name})) + S(res.items:name_log(windower.wc_match-{item_name}))):map(table.get-{'id'})
-	
-	local specified_bag = ''
-	if item_ids:length() == 0 then
-		error('Unknown item: %s':format(item_name))
-		return
-	end
-	local matches, results = find_items(item_ids)
-	local toolbagMatches, toolbagResults = find_items(toolbag_ids)
-	if (results == 0 and toolbagResults == 0) then
-        error('Item "%s" not found in %s.':format(item_name, source_bag and res.bags[source_bag].name or 'any accessible bags'))
-        return
-    elseif (results == 0 and toolbagResults > 0) then
-		for match in toolbagMatches:it() do
-			windower.ffxi['get_item'](match.bag, match.slot, 1)
-			windower.send_command('wait 1; input /item \'' .. item_name .. '\' <me>')
-		end
-	elseif results > 1 then
-		for match in matches:it() do
-			if match.bag == 0 then
-				windower.ffxi['put_item'](6, match.slot, results - 1)
-			end
-		end
-	else
-		for match in matches:it() do
-			windower.ffxi['get_item'](match.bag, match.slot, 1)
-			windower.send_command('wait 1')
-		end
-	end
-end
-
-macro_sets = {[0] = 24, [1] = 25, [2] = 26, [3] = 27,
-	[4] = 28, [5] = 29}
 
 function set_macro(slot, jobType) 
 	player = initialize_globals(player)
@@ -231,10 +116,6 @@ end
 
 function set_target(t)
 	target = t
-end
-
-function send_set_target(t)
-	windower.send_command('send '..name..' box target '..t)
 end
 
 function handle_dynamic_pact(category)
@@ -300,90 +181,6 @@ function pet_command(input)
 	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/pet'] .. ' 1.5 ' .. input)
 end
 
-function convertSpellLevel(input)
-	local nin = {['I'] = 'Ichi', ['II'] = 'Ni', ['III'] = 'San'}
-	return nin[input]
-end
-
-function select_highest_spell(ability)
-	local prefix = '/ma'
-    ability = ability:lower()
-	
-	local roman = {['II'] = 'II', ['III'] = 'III', ['IV'] = 'IV', ['V'] = 'V', ['VI'] = 'VI', ['VII'] = 'VII', ['VIII'] = 'VIII'}
-	local nin = {['Ichi'] = 'Ichi', ['Ni'] = 'Ni', ['San'] = 'San'}
-	local abilities = {}
-	local abils = {}
-	local number = 1
-	local unified_prefix = unify_prefix[prefix]
-	
-	local check = roman
-	local ninKey = ability:lower()
-	if (validabils[language][unified_prefix][ability .. ': ' .. nin['Ichi']:lower()]) or tool_map[ability] then
-		check = nin
-		if tool_map[ability] then
-			getNinjaTool(ability)
-		end
-		ability = ability .. ':'
-	else 
-		abils[number] = ability
-	end
-	number = number + 1
-	for id, value in pairs(check) do
-		abils[number] = ability .. ' ' .. value:lower()
-		number = number + 1
-	end
-	
-	number = 1
-	for id, abil in pairs(abils) do 
-		(function()
-			local ability_id = validabils[language][unified_prefix][abil]
-
-			if not (unified_prefix and ability_id) then
-				return
-			end
-			
-			r_line = copy_entry(res.spells[ability_id])
-			
-			if filter_pretarget(r_line) then
-				abilities[number] = r_line
-				number = number + 1
-			end
-		end)()
-	end
-	
-	if not abilities[1] then
-		windower.add_to_chat(122, "No valid ability with that name. "..ability)
-		return
-	end
-	
-	local maxid = '0'
-	local abilityToUse
-	local spell_recasts = windower.ffxi.get_spell_recasts()
-	for id, value in pairs(abilities) do
-		if tonumber(maxid) < tonumber(value['id']) then
-			if value['mp_cost'] then
-				if player.vitals.mp >= value['mp_cost'] then
-					if unified_prefix == '/ma' and (value.recast_id or value.id) then
-						if not spell_recasts[value.recast_id or value.id] or spell_recasts[value.recast_id or value.id] <= 0 then
-							maxid = value['id']
-							abilityToUse = value
-						end
-					end
-				end
-			else
-				maxid = value['id']
-				abilityToUse = value
-			end
-		end
-	end
-	
-	if elements.of_helix[ability] and not abilityToUse then
-		return select_highest_spell(elements.helix_of[elements.strong_to[elements.of_helix[ability]]])		
-	end
-	
-	return abilityToUse
-end
-
 function handle_storm()
 	local input = get_elements()
 	local day_element = input['day_element']
@@ -408,74 +205,57 @@ function handle_helix()
 	end
 end
 
-function trigger_pact_timer(avatar, pact_name)
-    local ja_recasts = windower.ffxi.get_ability_recasts()
-    local rage_recast = ja_recasts[173] or 0
-    local ward_recast = ja_recasts[174] or 0
-    local recast_duration = math.max(rage_recast, ward_recast)
-    
-    if recast_duration == 0 then recast_duration = 60 end 
-	local name = rage_recast > 0 and 'Rage' or 'Ward'
-    local recast_label = name
-    local ward_label = pact_name
-
-	local col = get_character_column(caster)
-    windower.send_command('send @all box timerui ' .. recast_duration .. ' ' .. recast_duration .. ' ' .. caster .. ' ' .. unify_prefix['/pet'] .. ' ' .. col .. ' ' .. recast_label)
-
-    if pact_wards.durations[pact_name] then
-        local ward_duration = pact_wards.durations[pact_name]
-        
-        if ward_duration < 181 and player.skills and player.skills.summoning_magic then
-            local skill = player.skills.summoning_magic
-            if skill > 300 then
-                local bonus = math.min(skill - 300, 200)
-                ward_duration = ward_duration + bonus
-            end
-        end
-		
-        local col = get_character_column(caster)
-    windower.send_command('send @all box timerui ' .. ward_duration .. ' ' .. ward_duration .. ' ' .. caster .. ' ' .. unify_prefix['/pet'] .. ' ' .. col .. ' ' .. ward_label)
-    end
-end
-
-function get_duration(abilityType, abilityName, casterName)
+function get_duration(abilityType, abilityName, caster)
     local duration = 0
     local main_job = windower.ffxi.get_player().main_job
+    
+    -- Normalize input to lowercase for consistent comparison
+    local name_lower = abilityName:lower()
 
     if abilityType == unify_prefix['/ma'] then
         local spell_recasts = windower.ffxi.get_spell_recasts()
-        local spell_data = res.spells:with('en', abilityName)
-        local r_id = spell_data and spell_data.recast_id or spell_data.id
-        duration = spell_recasts[r_id] and (spell_recasts[r_id] / 60) or 30
+        
+        -- Case-insensitive search through resources
+        local spell_id = res.spells:find(function(s) return s.en:lower() == name_lower end)
+		local spell_data = res.spells[spell_id]
+		abilityName = spell_data['en']
+        
+        local r_id = spell_data and (spell_data.recast_id or spell_data.id) or 0
+        duration = (spell_recasts[r_id] and spell_recasts[r_id] > 0) and (spell_recasts[r_id] / 60) or 0
     end
 
     if abilityType == unify_prefix['/ja'] then
         local ja_recasts = windower.ffxi.get_ability_recasts()
-        local ja_data = res.job_abilities:with('en', abilityName)
         
-        -- Primary lookup attempt
-        if ja_data then
-            duration = ja_recasts[ja_data.recast_id] or 0
-        end
+        -- Case-insensitive search through resources
+		local ja_id = res.job_abilities:find(function(j) return j.en:lower() == name_lower end)
+		local ja_data = res.job_abilities[ja_id]
+		abilityName = ja_data and ja_data['en'] or abilityName
+
+		-- Your original line that was failing
+		if type(ja_data) == 'table' and ja_data.recast_id then
+			duration = ja_recasts[ja_data.recast_id] or 0
+		end
         
-        -- Fallback overrides for charge-based abilities if the name lookup fails
+        -- Fallback overrides
         if duration == 0 then
-            local name_lower = abilityName:lower()
-            
             if main_job == 'SCH' and (name_lower:contains('stratagem') or name_lower:contains('arts')) then
                 duration = ja_recasts[231] or 0
+				abilityName = "Stratagems"
             elseif main_job == 'PUP' and name_lower:contains('maneuver') then
                 duration = ja_recasts[210] or 0
+				abilityName = "Maneuver"
             elseif main_job == 'BST' then
                 duration = ja_recasts[102] or 0
+				abilityName = "Ready"
             end
         end
     end
 
-    -- Create the timer using the total duration for both max and current time limits
+    -- Create the timer
     if duration > 0 then
         local col = get_character_column(caster)
-        -- Note: Changed unify_prefix['/ma'] to abilityType to ensure JAs are passed correctly
+        -- Using abilityName here, but the lookup was handled via name_lower
         windower.send_command('send @all box timerui ' .. duration .. ' ' .. duration .. ' ' .. caster .. ' ' .. abilityType .. ' ' .. col .. ' "' .. abilityName .. '"')
     end
 end
@@ -501,25 +281,6 @@ function create_network_timer(duration, charge_duration, abilityType, abilityNam
     }
     
     reposition_column_elements(col_index)
-end
-
-function reposition_column_elements(col_index)
-    local current_row = 0
-    for _, timer in pairs(active_network_timers) do
-        if timer.column == col_index then
-            local target_y = UI_Layout.base_y + (current_row * UI_Layout.row_height)
-            local current_x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
-            timer.ui:pos(current_x, target_y)
-            current_row = current_row + 1
-        end
-    end
-end
-
-local function generate_progress_string(time_left, total_time)
-    local max_segments = UI_Layout.bar_width
-    local filled_segments = math.max(0, math.floor((time_left / total_time) * max_segments))
-    local empty_segments = max_segments - filled_segments
-    return "[" .. string.rep("|", filled_segments) .. string.rep(".", empty_segments) .. "]"
 end
 
 windower.register_event('prerender', function()
@@ -549,7 +310,6 @@ windower.register_event('prerender', function()
     local updated_columns = {}
     for label, timer in pairs(active_network_timers) do
         timer.time_left = timer.time_left - 0.0333
-        
         if timer.time_left <= 0 then
             -- When time runs out, just destroy it. No more auto-renewing.
             timer.ui:destroy()

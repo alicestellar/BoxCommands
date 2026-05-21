@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 _addon.name    = 'BoxCommands'
 _addon.author  = 'Makaria'
-_addon.version = '1.0.0'
+_addon.version = '1.0.5'
 _addon.command = "box"
 
 require ('commands')

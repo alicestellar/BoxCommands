@@ -195,3 +195,16 @@ avatar_icons = {
     ['Fenrir']      = 'spells/00297.png',
     ['Diabolos']    = 'spells/00304.png'
 }
+
+UI_Style = {
+    bar_width = 120,
+    bar_height = 14,
+}
+
+UI_Layout.bar_dims = {
+    bg_w = 2172, -- Replace with actual width of bar_bg.png
+    bg_h = 280,   -- Replace with actual height of bar_bg.png
+    fg_w = 1468, -- Replace with actual width of the pink part (bar_fg.png)
+    fg_h = 235    -- Replace with actual height of the pink part (bar_fg.png)
+}
+UI_Layout.bar_padding = {x = 2, y = 2} -- Offset to center the pink part in the grey border

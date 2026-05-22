@@ -2,7 +2,6 @@ require ('helper_functions')
 local packets = require ('packets')
 local res = require('resources')
 local texts = require('texts')
-local images = require('images') -- Load Windower's image primitive library
 
 -- Active tracking table for ticking down live timers
 active_network_timers = {}
@@ -92,6 +91,7 @@ function setupCommands()
 	windower.send_command('bind !f6 send @all box target Luccaria')
 
 	windower.send_command('bind !` send @all box target <t>')
+	preload_textures()
 end
 
 function set_macro(slot, jobType) 
@@ -263,22 +263,27 @@ end
 function create_network_timer(duration, charge_duration, abilityType, abilityName, casterName, col_index)
     local label = abilityName
 	local index = casterName .. abilityName
+
+	-- Calculate X: Based on the column index
+	local x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
+
+	-- Calculate Y: Based on the number of active rows for this specific column
+	local row_count = 0
+	for _, timer in pairs(active_network_timers) do
+		if timer.column == col_index then
+			row_count = row_count + 1
+		end
+	end
+	local y = UI_Layout.base_y + (row_count * UI_Layout.row_height)
 	
-	
-    local ui_id = texts.new(index)
-    ui_id:font('Arial')
-    ui_id:size(9)
-    ui_id:pos(UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width), UI_Layout.base_y + 20)
-    ui_id:visible(true)
-    
-    active_network_timers[index] = {
-        ui = ui_id,
-        time_left = charge_duration,
-        total_time = duration,
-        column = col_index, 
-        display_label = label,
-        caster_name = casterName
-    }
+    -- Inside your timerui command handling:
+	local new_timer = {
+		time_left = duration,
+		total_time = duration,
+		column = col_index,
+		ui = create_timer_ui(x, y) -- Call the new image creator
+	}
+	active_network_timers[abilityName] = new_timer
     
     reposition_column_elements(col_index)
 end
@@ -309,17 +314,21 @@ windower.register_event('prerender', function()
 
     local updated_columns = {}
     for label, timer in pairs(active_network_timers) do
-        timer.time_left = timer.time_left - 0.0333
+		timer.time_left = timer.time_left - 0.0333
+        
         if timer.time_left <= 0 then
-            -- When time runs out, just destroy it. No more auto-renewing.
-            timer.ui:destroy()
-            updated_columns[timer.column] = true
+            if timer.ui then
+				if timer.ui.bg then timer.ui.bg:destroy() end
+				if timer.ui.fg then timer.ui.fg:destroy() end
+			end
+			updated_columns[timer.column] = true
             active_network_timers[label] = nil
         else
-            -- Continue drawing the progress bar as normal
-            local bar_visual = generate_progress_string(timer.time_left, timer.total_time)
-            local countdown_seconds = string.format("%ds", math.ceil(timer.time_left))
-            timer.ui:text(string.format(" %s %-12s %s ", bar_visual, timer.display_label, countdown_seconds))
+            -- Inside your Ticker Loop:
+			-- Just resize the foreground (fg) image
+			local percent = timer.time_left / timer.total_time
+			local new_width = math.floor(UI_Style.bar_width * percent)
+			timer.ui.fg:size(new_width, 10)
         end
     end
 
@@ -327,3 +336,17 @@ windower.register_event('prerender', function()
         reposition_column_elements(col_index)
     end
 end)
+
+-- Global master textures
+master_textures = {
+    bg = nil,
+    fg = nil
+}
+
+function preload_textures()
+    -- Load these ONCE during addon start
+    master_textures.bg = images.new()
+	master_textures.bg:path(windower.addon_path .. 'graphics/bar_bg.png')
+    master_textures.fg = images.new()
+	master_textures.fg:path(windower.addon_path .. 'graphics/bar_fg.png')
+end

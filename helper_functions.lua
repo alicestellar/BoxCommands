@@ -3,6 +3,7 @@ socket = require 'socket'
 extdata = require('extdata')
 res = require('resources')
 require('data_tables')
+images = require('images') -- Load Windower's image primitive library
 
 buffactive = {}
 
@@ -744,7 +745,17 @@ function reposition_column_elements(col_index)
         if timer.column == col_index then
             local target_y = UI_Layout.base_y + (current_row * UI_Layout.row_height)
             local current_x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
-            timer.ui:pos(current_x, target_y)
+            
+            -- Update Background Position
+            if timer.ui.bg then
+                timer.ui.bg:pos(current_x, target_y)
+            end
+            
+            -- Update Foreground Position (Apply padding to keep it inside the border)
+            if timer.ui.fg then
+                timer.ui.fg:pos(current_x + UI_Layout.bar_padding.x, target_y + UI_Layout.bar_padding.y)
+            end
+            
             current_row = current_row + 1
         end
     end
@@ -755,4 +766,25 @@ function generate_progress_string(time_left, total_time)
     local filled_segments = math.max(0, math.floor((time_left / total_time) * max_segments))
     local empty_segments = max_segments - filled_segments
     return "[" .. string.rep("|", filled_segments) .. string.rep(".", empty_segments) .. "]"
+end
+
+function create_timer_ui(x, y)
+    local bar = {}
+    
+    -- 1. Create the objects as empty primitives first
+    bar.bg = master_textures.bg
+    bar.fg = master_textures.fg
+    
+    -- 3. Set your specific sizes
+    bar.bg:size(120, 14) 
+    bar.fg:size(116, 10)
+    
+    -- 4. Position and show
+    bar.bg:pos(x, y)
+    bar.fg:pos(x + 2, y + 2)
+    
+    bar.bg:show()
+    bar.fg:show()
+    
+    return bar
 end

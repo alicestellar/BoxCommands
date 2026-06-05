@@ -746,9 +746,10 @@ function reposition_column_elements(col_index)
             local target_y = UI_Layout.base_y + (current_row * UI_Layout.row_height)
             local current_x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
             
-            -- Update Background Position
+            -- Update Background Position and Size
             if timer.ui.bg then
                 timer.ui.bg:pos(current_x, target_y)
+                timer.ui.bg:size(120, 14)
             end
             
             -- Update Foreground Position (Apply padding to keep it inside the border)
@@ -771,19 +772,20 @@ end
 function create_timer_ui(x, y)
     local bar = {}
     
-    -- 1. Create the objects as empty primitives first
-    bar.bg = master_textures.bg
-    bar.fg = master_textures.fg
-    
-    -- 3. Set your specific sizes
-    bar.bg:size(120, 14) 
-    bar.fg:size(116, 10)
-    
-    -- 4. Position and show
+    -- Create NEW image instances for each timer
+    -- Note: fit(false) enables scaling to the specified size (per Windower images API)
+    bar.bg = images.new()
+    bar.bg:fit(false)
+    bar.bg:path(windower.addon_path .. 'graphics/bar_bg.png')
+    bar.bg:size(120, 14)
     bar.bg:pos(x, y)
-    bar.fg:pos(x + 2, y + 2)
-    
     bar.bg:show()
+
+    bar.fg = images.new()
+    bar.fg:fit(false)
+    bar.fg:path(windower.addon_path .. 'graphics/bar_fg.png')
+    bar.fg:size(116, 10)
+    bar.fg:pos(x + 2, y + 2)
     bar.fg:show()
     
     return bar

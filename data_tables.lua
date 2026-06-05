@@ -133,24 +133,29 @@ universal_tool_map = {
 -- SUMMONER BLOOD PACT DATA TABLES
 -- ====================================================================
 pacts = {
-    ['cure'] = {['Carbuncle']='Healing Ruby', ['Garuda']='Whispering Wind', ['Leviathan']='Spring Water'},
+    ['cure'] = {['Carbuncle']='Healing Ruby'},
     ['curaga'] = {['Carbuncle']='Healing Ruby II', ['Garuda']='Whispering Wind', ['Leviathan']='Spring Water'},
-    ['buffoffense'] = {['Carbuncle']='Shining Ruby', ['Ifrit']='Crimson Howl', ['Garuda']='Hastega II', ['Titan']='Earthen Ward', ['Ramuh']='Rolling Thunder', ['Fenrir']='Ecliptic Growl', ['Diabolos']='Dream Shroud', ['Siren']='Katabatic Blades'},
-    ['buffdefense'] = {['Carbuncle']='Shining Ruby', ['Shiva']='Frost Armor', ['Garuda']='Aerial Armor', ['Titan']='Earthen Ward', ['Ramuh']='Lightning Armor', ['Leviathan']='Slowga', ['Fenrir']='Ecliptic Spurn', ['Diabolos']='Noctoshield', ['Siren']='Chinook'},
-    ['buffspecial'] = {['Carbuncle']='Glittering Ruby', ['Ifrit']='Crimson Howl', ['Shiva']='Sleepga', ['Garuda']='Fleet Wind', ['Titan']='Stone Skin', ['Ramuh']='Shock Squall', ['Leviathan']='Soothing Current', ['Fenrir']='Heavenward Howl', ['Diabolos']='Pavor Nocturnus', ['Siren']="Wind's Blessing"},
-    ['debuff1'] = {['Carbuncle']='Soothing Ruby', ['Ifrit']='Pyroclast', ['Shiva']='Diamond Storm', ['Garuda']='Shock Wave', ['Titan']='Rock Throw', ['Ramuh']='Shock Squall', ['Leviathan']='Slowga', ['Fenrir']='Lunar Cry', ['Diabolos']='Somnolence', ['Siren']='Sonic Buffet'},
-    ['debuff2'] = {['Carbuncle']='Soothing Ruby', ['Ifrit']='Pyroclast', ['Shiva']='Sleepga', ['Garuda']='Intimidate', ['Titan']='Rock Throw', ['Ramuh']='Thunderspark', ['Leviathan']='Tidal Roar', ['Fenrir']='Lunar Cry', ['Diabolos']='Ultimate Terror', ['Siren']='Bitter Elegy'},
-    ['sleep'] = {['Shiva']='Sleepga', ['Diabolos']='Nightmare'},
-    ['nuke2'] = {['Ifrit']='Burning Strike', ['Shiva']='Blizzard II', ['Garuda']='Claw', ['Titan']='Rock Buster', ['Ramuh']='Thunderspark', ['Leviathan']='Barracuda Dive', ['Fenrir']='Crescent Fang'},
-    ['nuke4'] = {['Ifrit']='Double Slap', ['Shiva']='Blizzard IV', ['Garuda']='Predatory Claws', ['Titan']='Mountain Buster', ['Ramuh']='Chaotic Strike', ['Leviathan']='Spinning Dive', ['Fenrir']='Eclipse Bite'},
-    ['bp70'] = {['Ifrit']='Flaming Crush', ['Shiva']='Rush', ['Garuda']='Predatory Claws', ['Titan']='Mountain Buster', ['Ramuh']='Chaotic Strike', ['Leviathan']='Spinning Dive', ['Fenrir']='Eclipse Bite', ['Diabolos']='Blindside', ['Siren']='Hysteric Assault'},
-    ['bp75'] = {['Ifrit']='Meteor Strike', ['Shiva']='Heavenly Strike', ['Garuda']='Wind Blade', ['Titan']='Geocrush', ['Ramuh']='Thunderstorm', ['Leviathan']='Grand Fall', ['Fenrir']='Lunar Bay', ['Diabolos']='Night Terror', ['Siren']='Sonic Buffet'},
-    ['bpray70'] = {['Ifrit']='Flaming Crush', ['Shiva']='Rush', ['Garuda']='Predatory Claws', ['Titan']='Mountain Buster', ['Ramuh']='Chaotic Strike', ['Leviathan']='Spinning Dive', ['Fenrir']='Eclipse Bite', ['Diabolos']='Blindside', ['Siren']='Hysteric Assault'},
-    ['astral'] = {['Carbuncle']='Searing Light', ['Ifrit']='Inferno', ['Shiva']='Diamond Dust', ['Garuda']='Aerial Blast', ['Titan']='Earthen Fury', ['Ramuh']='Judgment Bolt', ['Leviathan']='Tidal Wave', ['Fenrir']='Howling Moon', ['Diabolos']='Ruinous Omen', ['Siren']='Clarsach Call'}
+    ['buffoffense'] = {['Carbuncle']='Glittering Ruby', ['Ifrit']='Crimson Howl', ['Garuda']='Hastega', ['Ramuh']='Rolling Thunder', ['Fenrir']='Ecliptic Growl', ['Siren']='Katabatic Blades'},
+    ['buffdefense'] = {['Carbuncle']='Shining Ruby', ['Shiva']='Frost Armor', ['Garuda']='Aerial Armor', ['Titan']='Earthen Ward', ['Ramuh']='Lightning Armor', ['Fenrir']='Ecliptic Howl', ['Diabolos']='Noctoshield', ['Cait Sith']='Reraise II', ['Siren']='Chinook'},
+    ['buffspecial'] = {['Ifrit']='Inferno Howl', ['Garuda']='Fleet Wind', ['Titan']='Earthen Armor', ['Diabolos']='Dream Shroud', ['Carbuncle']='Soothing Ruby', ['Fenrir']='Heavenward Howl', ['Cait Sith']='Raise II', ['Siren']="Wind's Blessing"},
+    ['debuff1'] = {['Shiva']='Diamond Storm', ['Ramuh']='Shock Squall', ['Leviathan']='Tidal Roar', ['Fenrir']='Lunar Cry', ['Diabolos']='Pavor Nocturnus', ['Cait Sith']='Eerie Eye', ['Siren']='Sonic Buffet'},
+    ['debuff2'] = {['Shiva']='Sleepga', ['Leviathan']='Slowga', ['Fenrir']='Lunar Roar', ['Diabolos']='Somnolence', ['Siren']='Bitter Elegy'},
+    ['sleep'] = {['Shiva']='Sleepga', ['Diabolos']='Nightmare', ['Cait Sith']='Mewing Lullaby', ['Siren']='Lunatic Voice'},
+    ['nuke2'] = {['Ifrit']='Fire II', ['Shiva']='Blizzard II', ['Garuda']='Aero II', ['Titan']='Stone II', ['Ramuh']='Thunder II', ['Leviathan']='Water II'},
+    ['nuke4'] = {['Ifrit']='Fire IV', ['Shiva']='Blizzard IV', ['Garuda']='Aero IV', ['Titan']='Stone IV', ['Ramuh']='Thunder IV', ['Leviathan']='Water IV'},
+    ['bp70'] = {['Ifrit']='Flaming Crush', ['Shiva']='Rush', ['Garuda']='Predator Claws', ['Titan']='Mountain Buster', ['Ramuh']='Chaotic Strike', ['Leviathan']='Spinning Dive', ['Carbuncle']='Meteorite', ['Fenrir']='Eclipse Bite', ['Diabolos']='Nether Blast', ['Cait Sith']='Regal Scratch', ['Siren']='Roundhouse'},
+    ['bp75'] = {['Ifrit']='Meteor Strike', ['Shiva']='Heavenly Strike', ['Garuda']='Wind Blade', ['Titan']='Geocrush', ['Ramuh']='Thunderstorm', ['Leviathan']='Grand Fall', ['Carbuncle']='Holy Mist', ['Fenrir']='Lunar Bay', ['Diabolos']='Night Terror', ['Cait Sith']='Level ? Holy', ['Siren']='Tornado II'},
+    ['astralflow'] = {['Ifrit']='Inferno', ['Shiva']='Diamond Dust', ['Garuda']='Aerial Blast', ['Titan']='Earthen Fury', ['Ramuh']='Judgment Bolt', ['Leviathan']='Tidal Wave', ['Carbuncle']='Searing Light', ['Fenrir']='Howling Moon', ['Diabolos']='Ruinous Omen', ['Siren']='Clarsach Call'},
+    ['astralward'] = {['Cait Sith']="Altana's Favor"},
+    ['rage'] = {['Ifrit']='Punch', ['Shiva']='Axe Kick', ['Garuda']='Claw', ['Titan']='Rock Throw', ['Ramuh']='Shock Strike', ['Leviathan']='Barracuda Dive', ['Carbuncle']='Poison Nails', ['Fenrir']='Moonlit Charge', ['Diabolos']='Camisado', ['Cait Sith']='Regal Scratch', ['Siren']='Welt'},
+    ['rage2'] = {['Ifrit']='Burning Strike', ['Leviathan']='Tail Whip', ['Ramuh']='Thunderspark', ['Shiva']='Double Slap', ['Titan']='Rock Buster', ['Diabolos']='Somnolence', ['Fenrir']='Crescent Fang'},
+    ['rage3'] = {['Ifrit']='Double Punch', ['Titan']='Megalith Throw'},
+    ['finalrage'] = {['Ifrit']='Conflag Strike', ['Ramuh']='Volt Strike', ['Titan']='Crag Throw', ['Diabolos']='Blindside', ['Fenrir']='Impact', ['Siren']='Hysteric Assault', ['Cait Sith']='Regal Gash'},
+    ['finalward'] = {['Carbuncle']='Pacifying Ruby', ['Leviathan']='Soothing Current', ['Shiva']='Crystal Blessing', ['Garuda']='Hastega II'}
 }
 
-enemyTypePacts = S{'debuff1', 'debuff2', 'nuke2', 'nuke4', 'bp70', 'bp75', 'bpray70', 'astral'}
-selfTypePacts = S{'cure', 'curaga', 'buffoffense', 'buffdefense', 'buffspecial', 'sleep'}
+enemyTypePacts = S{'rage', 'rage2', 'rage3', 'finalrage', 'nuke2', 'nuke4', 'debuff1', 'debuff2', 'sleep', 'bp70', 'bp75', 'astralflow'}
+selfTypePacts = S{'buffoffense', 'buffdefense', 'buffspecial', 'finalward', 'curaga', 'astralward', 'cure'}
 
 pact_wards = {
     durations = {

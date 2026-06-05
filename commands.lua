@@ -72,6 +72,7 @@ caster = 'Makaria'
 function set_caster(name)
     if name then
         caster = name
+        -- Note: Full validation (is character in party?) deferred to Unit 2 (settings-driven)
     end
 end
 
@@ -91,22 +92,32 @@ function setupCommands()
 	windower.send_command('bind !f6 send @all box target Luccaria')
 
 	windower.send_command('bind !` send @all box target <t>')
-	preload_textures()
 end
 
 function set_macro(slot, jobType) 
 	player = initialize_globals(player)
 	party = windower.ffxi.get_party()
+	if not party then return end
 	if jobType == 'main' then
 		if (slot == 'default') then
 			set_macro_page(1, 1)
 		else
-			set_macro_page(2, macro_sets[tonumber(slot)])
-			name = party['p'..slot].name
+			local slot_num = tonumber(slot)
+			if slot_num and macro_sets[slot_num] then
+				set_macro_page(2, macro_sets[slot_num])
+				if party['p'..slot] and party['p'..slot].name then
+					name = party['p'..slot].name
+				end
+			end
 		end
 	elseif jobType == 'sub' then
-		set_macro_page(2, macro_sets[tonumber(slot)+6])
-		name = party['p'..slot].name
+		local slot_num = tonumber(slot)
+		if slot_num and macro_sets[slot_num+6] then
+			set_macro_page(2, macro_sets[slot_num+6])
+			if party['p'..slot] and party['p'..slot].name then
+				name = party['p'..slot].name
+			end
+		end
 	end
 end
 
@@ -147,6 +158,17 @@ function handle_dynamic_pact(category)
     else
         final_target = '<st>' 
     end
+
+    -- Astral Flow pacts require the Astral Flow buff to be active first
+    if cat == 'astralflow' then
+        refresh_player()
+        if not buffactive[369] and not buffactive['astral flow'] then
+            -- Activate Astral Flow JA first, then execute the pact after a short delay
+            windower.send_command('input /ja "Astral Flow" <me>; wait 1.5; input ' .. unify_prefix['/pet'] .. ' "' .. exact_pact_name .. '" ' .. final_target)
+            trigger_pact_timer(avatar_name, exact_pact_name)
+            return
+        end
+    end
 	
     windower.send_command('input ' .. unify_prefix['/pet'] .. ' \"' .. exact_pact_name .. '\" ' .. final_target)
 	trigger_pact_timer(avatar_name, exact_pact_name)
@@ -159,8 +181,14 @@ function cast_spell(ability_name)
     windower.send_command('input ' .. unify_prefix['/ma'] .. ' "' .. spell_data.en .. '" ' .. target)
 
 	local castTime = spell_data.cast_time + 0.5
+	local local_player = windower.ffxi.get_player()
 
-	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/ma'] .. ' ' .. castTime .. ' ' .. spell_data.en)
+	-- If we are the caster, handle pretimer locally instead of via send (avoids duplicate command)
+	if local_player and local_player.name:lower() == caster:lower() then
+		windower.send_command('@wait ' .. castTime .. '; box timer ' .. caster .. ' ' .. unify_prefix['/ma'] .. ' ' .. spell_data.en)
+	else
+		windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/ma'] .. ' ' .. castTime .. ' ' .. spell_data.en)
+	end
 end
 
 function job_ability(job, input)
@@ -186,11 +214,15 @@ function handle_storm()
 	local day_element = input['day_element']
 	local weather_element = input['weather_element']
 	local weather_intensity = input['weather_intensity']
+	-- Set target to self for storms, then cast the spell name directly
+	local old_target = target
+	target = '<me>'
 	if weather_element ~= 'None' and (weather_intensity == 2 or weather_element ~= elements.weak_to[day_element]) then
-		windower.send_command('box cast <me> '..elements.storm_of[weather_element])
+		cast_spell(elements.storm_of[weather_element])
 	else
-		windower.send_command('box cast <me> '..elements.storm_of[day_element])
+		cast_spell(elements.storm_of[day_element])
 	end
+	target = old_target
 end
 
 function handle_helix()
@@ -199,9 +231,9 @@ function handle_helix()
 	local weather_element = input['weather_element']
 	local weather_intensity = input['weather_intensity']
 	if weather_element ~= 'None' and (weather_intensity == 2 or weather_element ~= elements.weak_to[day_element]) then
-		windower.send_command('box cast <t> '..elements.helix_of[weather_element])
+		cast_spell(elements.helix_of[weather_element])
 	else
-		windower.send_command('box cast <t> '..elements.helix_of[day_element])
+		cast_spell(elements.helix_of[day_element])
 	end
 end
 
@@ -264,6 +296,10 @@ function create_network_timer(duration, charge_duration, abilityType, abilityNam
     local label = abilityName
 	local index = casterName .. abilityName
 
+	-- Ensure numeric types (args come in as strings from command parsing)
+	duration = tonumber(duration) or 0
+	col_index = tonumber(col_index) or 1
+
 	-- Calculate X: Based on the column index
 	local x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
 
@@ -276,12 +312,11 @@ function create_network_timer(duration, charge_duration, abilityType, abilityNam
 	end
 	local y = UI_Layout.base_y + (row_count * UI_Layout.row_height)
 	
-    -- Inside your timerui command handling:
 	local new_timer = {
 		time_left = duration,
 		total_time = duration,
 		column = col_index,
-		ui = create_timer_ui(x, y) -- Call the new image creator
+		ui = create_timer_ui(x, y)
 	}
 	active_network_timers[abilityName] = new_timer
     
@@ -313,23 +348,29 @@ windower.register_event('prerender', function()
     end
 
     local updated_columns = {}
+    local expired_timers = {}
     for label, timer in pairs(active_network_timers) do
-		timer.time_left = timer.time_left - 0.0333
-        
-        if timer.time_left <= 0 then
-            if timer.ui then
-				if timer.ui.bg then timer.ui.bg:destroy() end
-				if timer.ui.fg then timer.ui.fg:destroy() end
-			end
-			updated_columns[timer.column] = true
-            active_network_timers[label] = nil
+        if not timer or not timer.ui or not timer.ui.fg or not timer.ui.bg then
+            expired_timers[#expired_timers + 1] = label
         else
-            -- Inside your Ticker Loop:
-			-- Just resize the foreground (fg) image
-			local percent = timer.time_left / timer.total_time
-			local new_width = math.floor(UI_Style.bar_width * percent)
-			timer.ui.fg:size(new_width, 10)
+            timer.time_left = timer.time_left - 0.0333
+            
+            if timer.time_left <= 0 then
+                if timer.ui.bg then timer.ui.bg:destroy() end
+                if timer.ui.fg then timer.ui.fg:destroy() end
+                updated_columns[timer.column] = true
+                expired_timers[#expired_timers + 1] = label
+            else
+                local percent = timer.time_left / timer.total_time
+                local new_width = math.max(1, math.floor(UI_Style.bar_width * percent))
+                timer.ui.fg:size(new_width, 10)
+                timer.ui.bg:size(120, 14)
+            end
         end
+    end
+
+    for _, label in ipairs(expired_timers) do
+        active_network_timers[label] = nil
     end
 
     for col_index, _ in pairs(updated_columns) do
@@ -337,16 +378,5 @@ windower.register_event('prerender', function()
     end
 end)
 
--- Global master textures
-master_textures = {
-    bg = nil,
-    fg = nil
-}
-
-function preload_textures()
-    -- Load these ONCE during addon start
-    master_textures.bg = images.new()
-	master_textures.bg:path(windower.addon_path .. 'graphics/bar_bg.png')
-    master_textures.fg = images.new()
-	master_textures.fg:path(windower.addon_path .. 'graphics/bar_fg.png')
-end
+-- Master textures removed — each timer now creates its own image instances
+-- in create_timer_ui() (helper_functions.lua)

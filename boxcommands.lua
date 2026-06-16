@@ -26,29 +26,41 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
+-- BoxCommands: Multi-boxing command addon for Windower/FFXI.
+-- Dispatches //box commands to the appropriate handler in commands.lua,
+-- routing actions to the designated caster character via IPC when needed.
+
 _addon.name    = 'BoxCommands'
 _addon.author  = 'Makaria'
-_addon.version = '1.1.1'
+_addon.version = '1.2.0'
 _addon.command = "box"
 
 require ('commands')
 
 windower.register_event('addon command', function (command, ...)
 	local arg = {...}
+
+	-- setup: Binds hotkeys for character switching and targeting
 	if command == 'setup' then
 		setupCommands()
-	elseif command == 'spelllevel' then
-		set_spell_level(arg[1])
+
+	-- macro: Switch macro book/page. 'default' resets, otherwise slot+jobType
 	elseif command == 'macro' then
 		if arg[1] == 'default' then
 			set_macro('default', 'main')
 		else
 			set_macro(arg[1], arg[2])
 		end
+
+	-- setcaster: Designate which character should execute subsequent commands
 	elseif command == 'setcaster' then
 		set_caster(arg[1])
+
+	-- target: Set the spell/ability target (character name or <t>, <me>, etc.)
 	elseif command == 'target' then
 		set_target(arg[1])
+
+	-- cast: Cast the highest available tier of a spell on the designated caster
 	elseif command == 'cast' then
 		local spellName = arg[1]
 		if arg[2] then
@@ -67,6 +79,7 @@ windower.register_event('addon command', function (command, ...)
 			cast_spell(spellName) 
 		end
 
+	-- ja: Execute a job ability on the designated caster
 	elseif command == 'ja' then
 		local abilityName = arg[1]
 		if arg[2] then
@@ -85,6 +98,7 @@ windower.register_event('addon command', function (command, ...)
 			job_ability(nil, abilityName) 
 		end
 
+	-- pet: Issue a pet command (SMN/PUP/DRG) on the designated caster
 	elseif command == 'pet' then
 		local abilityName = arg[1]
 		if arg[2] then
@@ -102,6 +116,8 @@ windower.register_event('addon command', function (command, ...)
 		else
 			pet_command(abilityName) 
 		end
+
+	-- bstpet: Issue a BST pet command on the designated caster
 	elseif command == 'bstpet' then
 		local abilityName = arg[1]
 		if arg[2] then
@@ -119,6 +135,8 @@ windower.register_event('addon command', function (command, ...)
 		else
 			bstpet_command(abilityName) 
 		end
+
+	-- pact: Execute a summoner blood pact by category (e.g., bp70, nuke4, cure)
 	elseif command == 'pact' then
 		local pactName = arg[1]
 		if arg[2] then
@@ -135,20 +153,24 @@ windower.register_event('addon command', function (command, ...)
 		else
 			handle_dynamic_pact(pactName)
 		end
+
+	-- storm: Cast the optimal storm spell based on day/weather element
 	elseif command == 'storm' then
 		handle_storm()
+
+	-- helix: Cast the optimal helix spell based on day/weather element
 	elseif command == 'helix' then
 		handle_helix()
-	-- Replace the timer block in boxcommands.lua with this robust version:
+
+	-- pretimer: Delayed timer trigger (waits for cast time, then starts recast timer)
 	elseif command == 'pretimer' then
 		local num_args = #arg
 		
-		-- Properly map from the end of the argument table to avoid space issues in the label
 		local caster_name = arg[1]
 		local abilityType = arg[2]
 		local castTime = arg[3]
 		
-		-- Reconstruct the label from the middle arguments (indices 2 through num_args-2)
+		-- Reconstruct ability name from remaining args (handles multi-word names)
 		local abilityName = arg[4]
 		for i = 5, (num_args) do
 			abilityName = abilityName .. ' ' .. arg[i]
@@ -156,14 +178,15 @@ windower.register_event('addon command', function (command, ...)
 		if caster_name then
 			windower.send_command('@wait ' .. castTime .. '; box timer ' .. caster_name .. ' ' .. abilityType .. ' ' .. abilityName) 
 		end
+
+	-- timer: Query recast and create a timer bar for the given ability
 	elseif command == 'timer' then
 		local num_args = #arg
 		
-		-- Properly map from the end of the argument table to avoid space issues in the label
 		local caster_name = arg[1]
 		local abilityType = arg[2]
 		
-		-- Reconstruct the label from the middle arguments (indices 2 through num_args-2)
+		-- Reconstruct ability name from remaining args (handles multi-word names)
 		local abilityName = arg[3]
 		for i = 4, (num_args) do
 			abilityName = abilityName .. ' ' .. arg[i]
@@ -171,17 +194,18 @@ windower.register_event('addon command', function (command, ...)
 		if caster_name then
 			get_duration(abilityType, abilityName, caster_name)
 		end
+
+	-- timerui: Create a visual timer bar directly with explicit duration/column
 	elseif command == 'timerui' then
 		local num_args = #arg
 		
-		-- Properly map from the end of the argument table to avoid space issues in the label
 		local duration = arg[1]
 		local charge_duration = arg[2]
 		local caster_name = arg[3]
 		local abilityType = arg[4]
 		local col_index = arg[5]
 		
-		-- Reconstruct the label from the middle arguments (indices 2 through num_args-2)
+		-- Reconstruct ability name from remaining args (handles multi-word names)
 		local abilityName = arg[6]
 		for i = 7, (num_args) do
 			abilityName = abilityName .. ' ' .. arg[i]

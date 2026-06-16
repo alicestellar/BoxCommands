@@ -1,4 +1,7 @@
 -- data_tables.lua
+-- Static configuration tables for BoxCommands: UI layout, elemental mappings,
+-- ability prefix unification, ninjutsu tools, and summoner pact data.
+
 require('sets')
 local res = require('resources')
 
@@ -13,7 +16,7 @@ UI_Layout = {
     bar_width = 15,     
 }
 
--- Note: Removed 'local' so this is globally accessible
+-- Maps character names to their UI column index (1-based)
 char_columns = {
     ['Makaria']  = 1,
     ['Amaranti'] = 2,
@@ -33,56 +36,38 @@ elements.storm_of = {['Light']="Aurorastorm", ['Dark']="Voidstorm", ['Fire']="Fi
 elements.helix_of = {['Light']="Luminohelix", ['Dark']="Noctohelix", ['Fire']="Pyrohelix", ['Earth']="Geohelix", ['Water']="Hydrohelix", ['Wind']="Anemohelix", ['Ice']="Cryohelix", ['Lightning']="Ionohelix"}
 elements.of_helix = {['luminohelix']="Light", ['noctohelix']="Dark", ['pyrohelix']="Fire", ['geohelix']="Earth", ['hydrohelix']="Water", ['anemohelix']="Wind", ['cryohelix']="Ice", ['ionohelix']="Lightning"}
 elements.strong_to = {['Light']='Dark', ['Dark']='Light', ['Fire']='Water', ['Ice']='Fire', ['Wind']='Ice', ['Earth']='Wind', ['Lightning']='Earth', ['Water']='Lightning'}
-        
-helix = {'Luminohelix','Noctohelix','Pyrohelix','Geohelix', 'Hydrohelix','Anemohelix','Cryohelix','Ionohelix'}
 
 -- ====================================================================
 -- GAME DATA & CONFIGURATION TABLES
 -- ====================================================================
+
+-- Maps party slot indices to macro book numbers
 macro_sets = {[0] = 24, [1] = 25, [2] = 26, [3] = 27, [4] = 28, [5] = 29}
 
+-- Ability lookup tables indexed by [language][prefix][name] = resource_id
 validabils = {}
 validabils['english'] = {['/ma'] = {}, ['/ja'] = {}, ['/ws'] = {}, ['/item'] = {}, ['/ra'] = {}, ['/ms'] = {}, ['/pet'] = {}, ['/trig'] = {}, ['/echo'] = {}}
 validabils['french'] = {['/ma'] = {}, ['/ja'] = {}, ['/ws'] = {}, ['/item'] = {}, ['/ra'] = {}, ['/ms'] = {}, ['/pet'] = {}, ['/trig'] = {}, ['/echo'] = {}}
 validabils['german'] = {['/ma'] = {}, ['/ja'] = {}, ['/ws'] = {}, ['/item'] = {}, ['/ra'] = {}, ['/ms'] = {}, ['/pet'] = {}, ['/trig'] = {}, ['/echo'] = {}}
 validabils['japanese'] = {['/ma'] = {}, ['/ja'] = {}, ['/ws'] = {}, ['/item'] = {}, ['/ra'] = {}, ['/ms'] = {}, ['/pet'] = {}, ['/trig'] = {}, ['/echo'] = {}}
 
+-- Equipment slot disable flags (indexed 0-14), used by check_spell for Impact/Dispelga/Honor March
 disable_table = {false,false,false,false,false,false,false,false,false,false,false,false,false,false,false}
 disable_table[0] = false
 
+-- Normalizes all command prefix variants to their canonical form
 unify_prefix = {['/ma'] = '/ma', ['/magic']='/ma',['/jobability'] = '/ja',['/ja']='/ja',['/item']='/item',['/song']='/ma',
 ['/so']='/ma',['/ninjutsu']='/ma',['/weaponskill']='/ws',['/ws']='/ws',['/ra']='/ra',['/rangedattack']='/ra',['/nin']='/ma',
 ['/throw']='/ra',['/range']='/ra',['/shoot']='/ra',['/monsterskill']='/ms',['/ms']='/ms',['/pet']='/ja',['Monster']='Monster',['/bstpet']='/ja'}
-        
-bag_ids = res.bags:key_map(string.gsub-{' ', ''} .. string.lower .. table.get-{'english'} .. table.get+{res.bags}):map(table.get-{'id'})
 
+-- Maps unified prefixes to outgoing action packet category IDs
 outgoing_action_category_table = {['/ma']=3,['/ws']=7,['/ja']=9,['/ra']=16,['/ms']=25}
 
+-- Equipment slot index to name mapping
 default_slot_map = T{'sub','range','ammo','head','body','hands','legs','feet','neck','waist', 'left_ear', 'right_ear', 'left_ring', 'right_ring','back'}
 default_slot_map[0]= 'main'
 
-region_to_zone_map = { 
-    [4] = S{100,101,139,140,141,142,167,190},
-    [5] = S{102,103,108,193,196,248},
-    [6] = S{1,2,104,105,149,150,195},
-    [7] = S{106,107,143,144,172,173,191},
-    [8] = S{109,110,147,148,197},
-    [9] = S{115,116,145,146,169,170,192,194},
-    [10] = S{3,4,117,118,198,213,249},
-    [11] = S{7,8,119,120,151,152,200},
-    [12] = S{9,10,111,166,203,204,206},
-    [13] = S{5,6,112,161,162,165},
-    [14] = S{126,127,157,158,179,184},
-    [15] = S{121,122,153,154,202,251},
-    [16] = S{114,125,168,208,209,247},
-    [17] = S{113,128,174,201,212},
-    [18] = S{123,176,250,252},
-    [19] = S{124,159,160,163,205,207,211},
-    [20] = S{130,177,178,180,181},
-    [22] = S{11,12,13},
-    [24] = S{24,25,26,27,28,29,30,31,32},
-}
-
+-- Scholar addendum spell lists (spells requiring Addendum: White/Black)
 addendum_white = {[14]="Poisona",[15]="Paralyna",[16]="Blindna",[17]="Silena",[18]="Stona",[19]="Viruna",[20]="Cursna",
     [143]="Erase",[13]="Raise II",[140]="Raise III",[141]="Reraise II",[142]="Reraise III",[135]="Reraise"}
 
@@ -91,8 +76,10 @@ addendum_black = {[253]="Sleep",[259]="Sleep II",[260]="Dispel",[162]="Stone IV"
     [172]="Water IV",[173]="Water V",[255]="Break"}
 
 -- ====================================================================
--- NINJUTSU TOOL MAPPING PATCH
+-- NINJUTSU TOOL MAPPING
 -- ====================================================================
+
+-- Maps ninjutsu spell names to their required tool
 tool_map = {
     ['Utsusemi: Ichi'] = {english='Shihei'}, ['Utsusemi: Ni'] = {english='Shihei'}, ['Utsusemi: San'] = {english='Shihei'},
     ['Monomi: Ichi'] = {english='Sanjaku-Tenugui'}, ['Tonko: Ichi'] = {english='Shinobi-Tabi'}, ['Tonko: Ni'] = {english='Shinobi-Tabi'},
@@ -111,6 +98,7 @@ tool_map = {
     ['Yurin: Ichi'] = {english='Jinko'}
 }
 
+-- Maps ninjutsu spell names to universal (NIN main only) substitute tools
 universal_tool_map = {
     ['Utsusemi: Ichi'] = {english='Ino-Shika-Cho'}, ['Utsusemi: Ni'] = {english='Ino-Shika-Cho'}, ['Utsusemi: San'] = {english='Ino-Shika-Cho'},
     ['Monomi: Ichi'] = {english='Chonmage'}, ['Tonko: Ichi'] = {english='Chonmage'}, ['Tonko: Ni'] = {english='Chonmage'},
@@ -132,6 +120,8 @@ universal_tool_map = {
 -- ====================================================================
 -- SUMMONER BLOOD PACT DATA TABLES
 -- ====================================================================
+
+-- Maps pact categories to avatar-specific pact names
 pacts = {
     ['cure'] = {['Carbuncle']='Healing Ruby'},
     ['curaga'] = {['Carbuncle']='Healing Ruby II', ['Garuda']='Whispering Wind', ['Leviathan']='Spring Water'},
@@ -154,9 +144,12 @@ pacts = {
     ['finalward'] = {['Carbuncle']='Pacifying Ruby', ['Leviathan']='Soothing Current', ['Shiva']='Crystal Blessing', ['Garuda']='Hastega II'}
 }
 
+-- Pact categories that target enemies
 enemyTypePacts = S{'rage', 'rage2', 'rage3', 'finalrage', 'nuke2', 'nuke4', 'debuff1', 'debuff2', 'sleep', 'bp70', 'bp75', 'astralflow'}
+-- Pact categories that target self/party
 selfTypePacts = S{'buffoffense', 'buffdefense', 'buffspecial', 'finalward', 'curaga', 'astralward', 'cure'}
 
+-- Ward pact durations (seconds) and icon paths for timer display
 pact_wards = {
     durations = {
         ['Crimson Howl'] = 60, ['Earthen Armor'] = 60, ['Inferno Howl'] = 60, ['Heavenward Howl'] = 60,
@@ -187,6 +180,7 @@ pact_wards = {
     }
 }
 
+-- Avatar icon paths for UI display
 avatar_icons = {
     ['Carbuncle']   = 'spells/00296.png',
     ['Cait Sith']   = 'spells/00296.png',
@@ -201,15 +195,11 @@ avatar_icons = {
     ['Diabolos']    = 'spells/00304.png'
 }
 
+-- Timer bar styling constants
 UI_Style = {
     bar_width = 120,
     bar_height = 14,
 }
 
-UI_Layout.bar_dims = {
-    bg_w = 2172, -- Replace with actual width of bar_bg.png
-    bg_h = 280,   -- Replace with actual height of bar_bg.png
-    fg_w = 1468, -- Replace with actual width of the pink part (bar_fg.png)
-    fg_h = 235    -- Replace with actual height of the pink part (bar_fg.png)
-}
-UI_Layout.bar_padding = {x = 2, y = 2} -- Offset to center the pink part in the grey border
+-- Padding offset to center the foreground bar inside the background border
+UI_Layout.bar_padding = {x = 2, y = 2}

@@ -1,21 +1,15 @@
 require('tables')
-socket = require 'socket'
-extdata = require('extdata')
 res = require('resources')
 require('data_tables')
 images = require('images') -- Load Windower's image primitive library
 
 buffactive = {}
 
------------------------------------------------------------------------------------
-----Name: make_empty_item_table(slot)
--- Make an empty item table with slot = slot
-----Args:
--- slot - The index of the item table
------------------------------------------------------------------------------------
-----Returns:
--- A zero'd table with slot = slot
------------------------------------------------------------------------------------
+-----------------------------------------------------------
+-- Creates an empty equipment item table for a given slot.
+-- @param slot  The inventory slot index
+-- @return Table with zeroed fields and slot set
+-----------------------------------------------------------
 function make_empty_item_table(slot)
     return {id=0,
     count = 0,
@@ -25,14 +19,11 @@ function make_empty_item_table(slot)
     slot = slot}
 end
 
------------------------------------------------------------------------------------
---Name: user_key_filter()
---Args:
----- val (key): potential key to be modified
------------------------------------------------------------------------------------
---Returns:
----- Filtered key
------------------------------------------------------------------------------------
+-----------------------------------------------------------
+-- Normalizes a key for case-insensitive table lookups.
+-- @param val  The key value (string or other)
+-- @return Lowercased string, or original value if not string
+-----------------------------------------------------------
 function user_key_filter(val)
     if type(val) == 'string' then
         val = string.lower(val)
@@ -50,24 +41,32 @@ user_data_table = {
     end
     }
 
------------------------------------------------------------------------------------
---Name: make_user_table()
---Args:
----- None
------------------------------------------------------------------------------------
---Returns:
----- Table with case-insensitive keys
------------------------------------------------------------------------------------
+-----------------------------------------------------------
+-- Creates a table with case-insensitive string keys.
+-- @return New table with user_data_table metatable applied
+-----------------------------------------------------------
 function make_user_table()
     return setmetatable({}, user_data_table)
 end
 
+-----------------------------------------------------------
+-- Registers a single ability into the validabils lookup
+-- for one language.
+-- @param abil  Resource entry (spell/JA/WS/item)
+-- @param lang  Language key ('english', 'french', etc.)
+-- @param i     Resource ID for lookup
+-----------------------------------------------------------
 function make_abil(abil,lang,i)
     if not abil[lang] or not abil.prefix then return end
     local sp,pref = abil[lang]:lower(), unify_prefix[abil.prefix:lower()]
     validabils[lang][pref][sp] = i
 end
 
+-----------------------------------------------------------
+-- Registers an ability across all four languages.
+-- @param v  Resource entry
+-- @param i  Resource ID
+-----------------------------------------------------------
 function make_entry(v,i)
     make_abil(v,'english',i)
     make_abil(v,'german',i)
@@ -75,6 +74,7 @@ function make_entry(v,i)
     make_abil(v,'japanese',i)
 end
 
+-- Populate validabils lookup tables from game resources
 for i,v in pairs(res.spells) do
     if not T{363,364}:contains(i) then
         make_entry(v,i)
@@ -102,17 +102,29 @@ for i,v in pairs(res.items) do
     end
 end
 
+-----------------------------------------------------------
+-- Deep-copies a resource entry preserving its metatable.
+-- @param tab  Source table to copy
+-- @return New table with same contents and metatable, or nil
+-----------------------------------------------------------
 function copy_entry(tab)
     if not tab then return nil end
     local ret = setmetatable(table.reassign({},tab),getmetatable(tab))
     return ret
 end
 
+-----------------------------------------------------------
+-- Validates whether a spell can be cast by the current player.
+-- Checks: known spells, job access, addendum requirements,
+-- blue magic sets, and ninjutsu tool availability.
+-- @param available_spells  Table from windower.ffxi.get_spells()
+-- @param spell             Spell resource entry to validate
+-- @return true if castable, or false + error message string
+-----------------------------------------------------------
 function check_spell(available_spells,spell)
     refresh_player()
 	-- Filter for spells that you do not know.
     -- Exclude Impact / Dispelga / Honor March if the respective slots are enabled.
-    -- Need to add logic to check whether the equipment is already on
     local spell_jobs = copy_entry(res.spells[spell.id].levels)
     if not available_spells[spell.id] and not (
             (not disable_table[5] and not disable_table[4] and spell.id == 503) or -- Body + Head + Impact
@@ -120,12 +132,10 @@ function check_spell(available_spells,spell)
             ((not disable_table[0] or not disable_table[1]) and spell.id == 360) -- Main or Sub + Dispelga
         ) then
         return false,"Unable to execute command. You do not know that spell ("..(res.spells[spell.id][language] or spell.id)..")"
-    -- Filter for spells that you know, but do not currently have access to
     elseif (not spell_jobs[player.main_job_id] or not (spell_jobs[player.main_job_id] <= player.main_job_level or
         (spell_jobs[player.main_job_id] >= 100 and number_of_jps(player.job_points[__raw.lower(res.jobs[player.main_job_id].ens)]) >= spell_jobs[player.main_job_id]) ) ) and
         (not spell_jobs[player.sub_job_id] or not (spell_jobs[player.sub_job_id] <= player.sub_job_level)) and not (player.main_job_id == 23) then
         return false,"Unable to execute command. You do not have access to that spell ("..(res.spells[spell.id][language] or spell.id)..")"
-    -- At this point, we know that it is technically castable by this job combination if the right conditions are met.
     elseif player.main_job_id == 20 and ((addendum_white[spell.id] and not buffactive[401] and not buffactive[416]) or
         (addendum_black[spell.id] and not buffactive[402] and not buffactive[416])) and
         not (spell_jobs[player.sub_job_id] and spell_jobs[player.sub_job_id] <= player.sub_job_level) then
@@ -138,7 +148,6 @@ function check_spell(available_spells,spell)
     elseif spell.type == 'BlueMagic' and not ((player.main_job_id == 16 and table.contains(windower.ffxi.get_mjob_data().spells,spell.id)) 
         or unbridled_learning_set[spell.english]) and
         not (player.sub_job_id == 16 and table.contains(windower.ffxi.get_sjob_data().spells,spell.id)) then
-        -- This code isn't hurting anything, but it doesn't need to be here either.
         return false,"Unable to execute command. Blue magic must be set to cast that spell ("..(res.spells[spell.id][language] or spell.id)..")"
     elseif spell.type == 'Ninjutsu'  then
         if player.main_job_id ~= 13 and player.sub_job_id ~= 13 then
@@ -150,6 +159,13 @@ function check_spell(available_spells,spell)
     return true
 end
 
+-----------------------------------------------------------
+-- Pre-target validation for outgoing actions.
+-- Checks spell knowledge, WS/JA availability, and
+-- monstrosity access before allowing an action to proceed.
+-- @param action  The action resource entry to validate
+-- @return true if action is permitted, false otherwise
+-----------------------------------------------------------
 function filter_pretarget(action)
     local category = outgoing_action_category_table[unify_prefix[action.prefix]]
     local bool = true
@@ -170,7 +186,6 @@ function filter_pretarget(action)
     elseif category == 25 and (not player.main_job_id == 23 or not windower.ffxi.get_mjob_data().species or
         not res.monstrosity[windower.ffxi.get_mjob_data().species] or not res.monstrosity[windower.ffxi.get_mjob_data().species].tp_moves[action.id] or
         not (res.monstrosity[windower.ffxi.get_mjob_data().species].tp_moves[action.id] <= player.main_job_level)) then
-        -- Monstrosity filtering
         msg.debugging("Unable to execute command. You do not have access to that monsterskill ("..(res.monster_skills[action.id][language] or action.id)..")")
         return false
     end
@@ -181,6 +196,12 @@ function filter_pretarget(action)
     return bool
 end
 
+-----------------------------------------------------------
+-- Initializes the global player, pet, fellow, and items
+-- state from the current game data.
+-- @param player  Existing player table (will be replaced)
+-- @return Fully initialized player table
+-----------------------------------------------------------
 function initialize_globals(player)
     local pl = windower.ffxi.get_player()
     if not pl then
@@ -207,13 +228,6 @@ function initialize_globals(player)
     fellow.isvalid = false
     partybuffs = {}
 
-    -- GearSwap effectively needs to maintain two inventory structures:
-    --  one is the proposed current inventory based on equip packets sent to the server,
-    --  the other is the currently reported inventory based on packets sent from the server.
-    -- The problem with proposed_inv is that it doesn't know when actions force items to unequip or prevent them from equipping.
-    -- The problem with reported_inv is that packets can be dropped, so it doesn't always report everything accurately.
-    -- In an ideal world, gearswap would maintain a registry of expected changes for each slot,
-    --  and would advance along the registry as changes are reported by the server.
     items = windower.ffxi.get_items()
     if not items then
         items = {
@@ -246,19 +260,14 @@ function initialize_globals(player)
 	return player
 end
 
------------------------------------------------------------------------------------
---Name: refresh_group_info()
---Args:
----- None
------------------------------------------------------------------------------------
---Returns:
----- None
-----
----- Takes the mob arrays from windower.ffxi.get_party() and splits them from p0~5, a10~15, a20~25
----- into alliance[1][1~6], alliance[2][1~6], alliance[3][1~6], respectively.
----- Also adds a "count" field to alliance (total number of people in alliance) and
----- to the individual subtables (total number of people in each party.
------------------------------------------------------------------------------------
+-----------------------------------------------------------
+-- Refreshes party/alliance data from the game state.
+-- Splits party members into alliance[1..3][1..6] structure
+-- with count fields and leader references.
+-- @param party      Current party reference (reassigned)
+-- @param partyinfo  Game info table (reassigned)
+-- @return party, partyinfo  Updated references
+-----------------------------------------------------------
 function refresh_group_info(party, partyinfo)
     if not alliance or #alliance == 0 then
         alliance = make_alliance()
@@ -270,7 +279,7 @@ function refresh_group_info(party, partyinfo)
     
     local j = windower.ffxi.get_party() or {}
     
-    c_alliance.leader = j.alliance_leader -- Test whether this works
+    c_alliance.leader = j.alliance_leader
     c_alliance[1].leader = j.party1_leader
     c_alliance[2].leader = j.party2_leader
     c_alliance[3].leader = j.party3_leader
@@ -285,11 +294,9 @@ function refresh_group_info(party, partyinfo)
         local allyIndex
         local partyIndex
         
-        -- For 'p#', ally index is 1, party index is the second char
         if i:sub(1,1) == 'p' and tonumber(i:sub(2)) then
             allyIndex = 1
             partyIndex = tonumber(i:sub(2))+1
-        -- For 'a##', ally index is the second char, party index is the third char
         elseif tonumber(i:sub(2,2)) and tonumber(i:sub(3)) then
             allyIndex = tonumber(i:sub(2,2))+1
             partyIndex = tonumber(i:sub(3))+1
@@ -315,8 +322,7 @@ function refresh_group_info(party, partyinfo)
             end
         end
     end
-    
-        
+
     -- Clear the old structure while maintaining the party references:
     for ally_party = 1,3 do
         for i,v in pairs(alliance[ally_party]) do
@@ -337,14 +343,10 @@ function refresh_group_info(party, partyinfo)
 	return party, partyinfo
 end
 
------------------------------------------------------------------------------------
---Name: make_alliance()
---Args:
----- none
------------------------------------------------------------------------------------
---Returns:
----- one blank alliance structure
------------------------------------------------------------------------------------
+-----------------------------------------------------------
+-- Creates a blank alliance structure with 3 parties.
+-- @return Empty alliance table with count/leader fields
+-----------------------------------------------------------
 function make_alliance()
     local all = make_user_table()
     all[1]={count=0,leader=nil}
@@ -355,38 +357,11 @@ function make_alliance()
     return all
 end
 
------------------------------------------------------------------------------------
---Name: convert_buff_list(bufflist)
---Args:
----- bufflist (table): List of buffs from windower.ffxi.get_player()['buffs']
------------------------------------------------------------------------------------
---Returns:
----- buffarr (table)
----- buffarr is indexed by the string buff name and has a value equal to the number
----- of that string present in the buff array. So two marches would give
----- buffarr.march==2.
------------------------------------------------------------------------------------
-function convert_buff_list(bufflist)
-    local buffarr = {}
-    for i,v in pairs(bufflist) do
-        if res.buffs[v] then -- For some reason we always have buff 255 active, which doesn't have an entry.
-            local buff = res.buffs[v][language]:lower()
-            if buffarr[buff] then
-                buffarr[buff] = buffarr[buff] +1
-            else
-                buffarr[buff] = 1
-            end
-            
-            if buffarr[v] then
-                buffarr[v] = buffarr[v] +1
-            else
-                buffarr[v] = 1
-            end
-        end
-    end
-    return buffarr
-end
-
+-----------------------------------------------------------
+-- Debug utility: recursively serializes a table to string.
+-- @param o  Value to serialize
+-- @return String representation of the value
+-----------------------------------------------------------
 function dump(o)
    if type(o) == 'table' then
       local s = '{ '
@@ -400,11 +375,15 @@ function dump(o)
    end
 end
 
+-----------------------------------------------------------
+-- Filters a timer list to only entries with recast > 0.
+-- @param timer_list  Table of {key = recast_seconds}
+-- @return Table containing only active (>0) timers
+-----------------------------------------------------------
 function filter_active_timers(timer_list)
     local active_list = {}
     
     for key, value in pairs(timer_list) do
-        -- Check if the value (recast) is greater than 0
         if value > 0 then
             active_list[key] = value
         end
@@ -413,10 +392,11 @@ function filter_active_timers(timer_list)
     return active_list
 end
 
--------------------------------------------------------------------------------------------------------------------
--- Function to easily change to a given macro set or book.  Book value is optional.
--------------------------------------------------------------------------------------------------------------------
-
+-----------------------------------------------------------
+-- Sets the in-game macro page and optionally book.
+-- @param set   Macro set number (1-10)
+-- @param book  Optional macro book number (1-40)
+-----------------------------------------------------------
 function set_macro_page(set,book)
 	if not tonumber(set) then
 		windower.add_to_chat(1,'Error setting macro page: Set is not a valid number ('..tostring(set)..').')
@@ -442,6 +422,10 @@ function set_macro_page(set,book)
 	end
 end
 
+-----------------------------------------------------------
+-- Queries current day and weather elements from the game.
+-- @return Table with day_element, weather_element, weather_intensity
+-----------------------------------------------------------
 function get_elements()
 	local info = windower.ffxi.get_info()
 	local output = {['day_element']='',['weather_element']='',['weather_intensity']=''}
@@ -457,6 +441,11 @@ function get_elements()
 	return output
 end
 
+-----------------------------------------------------------
+-- Extracts element name and intensity from a weather ID.
+-- @param id  Weather resource ID
+-- @return Table with 'element' and 'intensity' keys
+-----------------------------------------------------------
 function weather_update(id)
 	local output = {['element']='',['intensity']=''}
 	weather_id = id
@@ -465,6 +454,12 @@ function weather_update(id)
 	return output
 end
 
+-----------------------------------------------------------
+-- Checks if a value exists in an ipairs-iterable table.
+-- @param tab  Table to search
+-- @param val  Value to find
+-- @return true if found, false otherwise
+-----------------------------------------------------------
 function has_value (tab, val)
     for index, value in ipairs(tab) do
         if value == val then
@@ -474,11 +469,15 @@ function has_value (tab, val)
     return false
 end
 
+-----------------------------------------------------------
+-- Debug utility: prints a table recursively with indentation.
+-- Detects cyclic references to prevent infinite recursion.
+-- @param t  Table to print
+-----------------------------------------------------------
 function print_r(t)
     indent = 0
     local indent_str = string.rep("  ", indent)
 
-    -- Detect and prevent infinite recursion with cyclic tables
     local printed_tables = printed_tables or {}
     if printed_tables[t] then
         print(indent_str .. "table: " .. tostring(t) .. " (cyclic)")
@@ -502,6 +501,10 @@ function print_r(t)
     printed_tables[t] = nil
 end
 
+-----------------------------------------------------------
+-- Refreshes the global player state and buffactive table
+-- from current game data.
+-----------------------------------------------------------
 function refresh_player()
     local pl, player_mob_table
 	local temp = {}
@@ -517,6 +520,12 @@ function refresh_player()
 	player = pl
 end
 
+-----------------------------------------------------------
+-- Converts a raw buff ID list into a name-indexed count table.
+-- Each buff is indexed by both its string name and numeric ID.
+-- @param bufflist  Array of active buff IDs
+-- @return Table keyed by buff name/id with count values
+-----------------------------------------------------------
 function convert_buff_list(bufflist)
     local buffarr = {}
     for _,id in pairs(bufflist) do
@@ -538,18 +547,28 @@ function convert_buff_list(bufflist)
     return buffarr
 end
 
+-----------------------------------------------------------
+-- Returns the UI column index for a character name.
+-- @param char_name  Character name to look up
+-- @return Column index (1-based), defaults to 1 if not found
+-----------------------------------------------------------
 function get_character_column(char_name)
     if not char_name then return 1 end
-    -- Normalize the input name to match the keys in your table
     local name = char_name:lower()
     for k, v in pairs(char_columns) do
         if k:lower() == name then
             return v
         end
     end
-    return 1 -- Fallback
+    return 1
 end
 
+-----------------------------------------------------------
+-- Searches all accessible inventory bags for items matching
+-- a set of IDs.
+-- @param ids  Set of item IDs to search for
+-- @return res_set (Set of match tables), found (total count)
+-----------------------------------------------------------
 find_items = function(ids)
     local res_set = S{}
     local found = 0
@@ -574,6 +593,11 @@ find_items = function(ids)
     return res_set, found
 end
 
+-----------------------------------------------------------
+-- Ensures ninjutsu tools are available in inventory.
+-- Retrieves from storage or opens toolbags as needed.
+-- @param ability  Ninjutsu base name (e.g., 'katon', 'utsusemi')
+-----------------------------------------------------------
 function getNinjaTool(ability)
 	local tools = {['katon'] = 'Uchitake', ['suiton'] = 'Mizu-Deppo', ['raiton'] = 'Hiraishin', ['doton'] = 'Makibishi',
 		['huton'] = 'Kawahori-Ogi', ['hyoton'] = 'Tsurara', ['utsusemi'] = 'Shihei', ['migawari'] = 'Mokujin', ['kakka'] = 'Ryuno',
@@ -591,7 +615,7 @@ function getNinjaTool(ability)
 	
 	item_name = bags[ability]
 	local toolbag_ids = (S(res.items:name(windower.wc_match-{item_name})) + S(res.items:name_log(windower.wc_match-{item_name}))):map(table.get-{'id'})
-	
+
 	local specified_bag = ''
 	if item_ids:length() == 0 then
 		error('Unknown item: %s':format(item_name))
@@ -621,15 +645,14 @@ function getNinjaTool(ability)
 	end
 end
 
-function send_set_target(t)
-	windower.send_command('send '..name..' box target '..t)
-end
-
-function convertSpellLevel(input)
-	local nin = {['I'] = 'Ichi', ['II'] = 'Ni', ['III'] = 'San'}
-	return nin[input]
-end
-
+-----------------------------------------------------------
+-- Selects and validates the highest tier of a spell the
+-- player can currently cast. Handles roman numeral tiers,
+-- ninjutsu tiers, MP cost checks, and recast timers.
+-- Falls back to the opposing-element helix if unavailable.
+-- @param ability  Base spell name (e.g., 'cure', 'katon')
+-- @return Spell resource entry of the highest castable tier, or nil
+-----------------------------------------------------------
 function select_highest_spell(ability)
 	local prefix = '/ma'
     ability = ability:lower()
@@ -680,7 +703,7 @@ function select_highest_spell(ability)
 		windower.add_to_chat(122, "No valid ability with that name. "..ability)
 		return
 	end
-	
+
 	local maxid = '0'
 	local abilityToUse
 	local spell_recasts = windower.ffxi.get_spell_recasts()
@@ -709,6 +732,12 @@ function select_highest_spell(ability)
 	return abilityToUse
 end
 
+-----------------------------------------------------------
+-- Triggers Blood Pact recast and ward duration timers
+-- after a summoner pact is executed.
+-- @param avatar     Name of the active avatar
+-- @param pact_name  Name of the pact that was used
+-----------------------------------------------------------
 function trigger_pact_timer(avatar, pact_name)
     local ja_recasts = windower.ffxi.get_ability_recasts()
     local rage_recast = ja_recasts[173] or 0
@@ -739,6 +768,11 @@ function trigger_pact_timer(avatar, pact_name)
     end
 end
 
+-----------------------------------------------------------
+-- Repositions all timer bars in a column after one expires.
+-- Stacks remaining timers vertically without gaps.
+-- @param col_index  Column index to reposition (1-based)
+-----------------------------------------------------------
 function reposition_column_elements(col_index)
     local current_row = 0
     for _, timer in pairs(active_network_timers) do
@@ -746,13 +780,11 @@ function reposition_column_elements(col_index)
             local target_y = UI_Layout.base_y + (current_row * UI_Layout.row_height)
             local current_x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
             
-            -- Update Background Position and Size
             if timer.ui.bg then
                 timer.ui.bg:pos(current_x, target_y)
                 timer.ui.bg:size(120, 14)
             end
             
-            -- Update Foreground Position (Apply padding to keep it inside the border)
             if timer.ui.fg then
                 timer.ui.fg:pos(current_x + UI_Layout.bar_padding.x, target_y + UI_Layout.bar_padding.y)
             end
@@ -762,18 +794,16 @@ function reposition_column_elements(col_index)
     end
 end
 
-function generate_progress_string(time_left, total_time)
-    local max_segments = UI_Layout.bar_width
-    local filled_segments = math.max(0, math.floor((time_left / total_time) * max_segments))
-    local empty_segments = max_segments - filled_segments
-    return "[" .. string.rep("|", filled_segments) .. string.rep(".", empty_segments) .. "]"
-end
-
+-----------------------------------------------------------
+-- Creates a new timer bar UI element (background + foreground).
+-- Each timer gets its own image instances.
+-- @param x  X position for the bar
+-- @param y  Y position for the bar
+-- @return Table with .bg and .fg image handles
+-----------------------------------------------------------
 function create_timer_ui(x, y)
     local bar = {}
     
-    -- Create NEW image instances for each timer
-    -- Note: fit(false) enables scaling to the specified size (per Windower images API)
     bar.bg = images.new()
     bar.bg:fit(false)
     bar.bg:path(windower.addon_path .. 'graphics/bar_bg.png')

@@ -1,5 +1,4 @@
 require ('helper_functions')
-local packets = require ('packets')
 local res = require('resources')
 local texts = require('texts')
 
@@ -10,12 +9,15 @@ active_network_timers = {}
 -- INITIALIZATION & COLUMN LAYOUT SETUP
 -- ====================================================================
 column_headers = {}
-timer_display_rows = {} 
 
 -- Storage tables to track graphical role icons
 caster_icons = {}
 target_icons = {}
 
+-----------------------------------------------------------
+-- Creates column header labels and caster/target icons
+-- for the timer UI. One column per character.
+-----------------------------------------------------------
 function initialize_column_headers()
     local names = {'Makaria', 'Amaranti', 'Aenura', 'Midnaria', 'Entrapta', 'Luccaria'}
     local icon_base_path = windower.windower_path .. 'plugins/icons/'
@@ -42,7 +44,7 @@ function initialize_column_headers()
         ui_id:visible(true) 
         column_headers[char_name] = ui_id
 
-        -- Caster Icon: Shifted Up (-7) and Left (-5 from previous pos)
+        -- Caster Icon
         local c_img = images.new()
         c_img:path(icon_base_path .. 'spells/00001.png')
         c_img:size(14, 14)
@@ -50,7 +52,7 @@ function initialize_column_headers()
         c_img:visible(false)
         caster_icons[char_name] = c_img
 
-        -- Target Icon: Shifted Up (-7)
+        -- Target Icon
         local t_img = images.new()
         t_img:path(icon_base_path .. 'abilities/00124.png')
         t_img:size(14, 14)
@@ -60,15 +62,20 @@ function initialize_column_headers()
     end
 end
 
+-- ====================================================================
+-- GLOBAL STATE
+-- ====================================================================
 player = initialize_globals(player)
 party = windower.ffxi.get_party()
-spelllevel = 'max'
 language = 'english'
-name = ''
 target = '<t>'
 
 caster = 'Makaria'
 
+-----------------------------------------------------------
+-- Sets the active caster character for subsequent commands.
+-- @param name  Character name string
+-----------------------------------------------------------
 function set_caster(name)
     if name then
         caster = name
@@ -76,6 +83,10 @@ function set_caster(name)
     end
 end
 
+-----------------------------------------------------------
+-- Binds hotkeys for quick character switching and targeting.
+-- Ctrl+F1-F6 exec character scripts, Alt+F1-F6 set targets.
+-----------------------------------------------------------
 function setupCommands() 
     windower.send_command('bind ^f1 exec Makaria.txt')
     windower.send_command('bind ^f2 exec Amaranti.txt')
@@ -94,6 +105,11 @@ function setupCommands()
 	windower.send_command('bind !` send @all box target <t>')
 end
 
+-----------------------------------------------------------
+-- Switches macro book/set based on party slot and job type.
+-- @param slot     Party slot number or 'default'
+-- @param jobType  'main' or 'sub' job context
+-----------------------------------------------------------
 function set_macro(slot, jobType) 
 	player = initialize_globals(player)
 	party = windower.ffxi.get_party()
@@ -105,30 +121,30 @@ function set_macro(slot, jobType)
 			local slot_num = tonumber(slot)
 			if slot_num and macro_sets[slot_num] then
 				set_macro_page(2, macro_sets[slot_num])
-				if party['p'..slot] and party['p'..slot].name then
-					name = party['p'..slot].name
-				end
 			end
 		end
 	elseif jobType == 'sub' then
 		local slot_num = tonumber(slot)
 		if slot_num and macro_sets[slot_num+6] then
 			set_macro_page(2, macro_sets[slot_num+6])
-			if party['p'..slot] and party['p'..slot].name then
-				name = party['p'..slot].name
-			end
 		end
 	end
 end
 
-function set_spell_level(input)
-	spelllevel = input
-end
-
+-----------------------------------------------------------
+-- Sets the target for subsequent spell/ability commands.
+-- @param t  Target string (character name, <t>, <me>, etc.)
+-----------------------------------------------------------
 function set_target(t)
 	target = t
 end
 
+-----------------------------------------------------------
+-- Resolves a pact category to the correct Blood Pact for
+-- the currently active avatar, then executes it.
+-- Handles Astral Flow activation and pact timers.
+-- @param category  Pact category string (e.g., 'bp70', 'nuke4')
+-----------------------------------------------------------
 function handle_dynamic_pact(category)
     local pet_mob = windower.ffxi.get_mob_by_target('pet')
     if not pet_mob or not pet_mob.name then
@@ -163,7 +179,6 @@ function handle_dynamic_pact(category)
     if cat == 'astralflow' then
         refresh_player()
         if not buffactive[369] and not buffactive['astral flow'] then
-            -- Activate Astral Flow JA first, then execute the pact after a short delay
             windower.send_command('input /ja "Astral Flow" <me>; wait 1.5; input ' .. unify_prefix['/pet'] .. ' "' .. exact_pact_name .. '" ' .. final_target)
             trigger_pact_timer(avatar_name, exact_pact_name)
             return
@@ -174,6 +189,12 @@ function handle_dynamic_pact(category)
 	trigger_pact_timer(avatar_name, exact_pact_name)
 end
 
+-----------------------------------------------------------
+-- Casts the highest available tier of a spell on the
+-- current target. Sends pretimer/timer commands for the
+-- recast UI across all characters.
+-- @param ability_name  Base spell name (e.g., 'cure', 'fire')
+-----------------------------------------------------------
 function cast_spell(ability_name)
     local spell_data = select_highest_spell(ability_name)
     if not spell_data then return end
@@ -183,7 +204,7 @@ function cast_spell(ability_name)
 	local castTime = spell_data.cast_time + 0.5
 	local local_player = windower.ffxi.get_player()
 
-	-- If we are the caster, handle pretimer locally instead of via send (avoids duplicate command)
+	-- If we are the caster, handle pretimer locally instead of via send
 	if local_player and local_player.name:lower() == caster:lower() then
 		windower.send_command('@wait ' .. castTime .. '; box timer ' .. caster .. ' ' .. unify_prefix['/ma'] .. ' ' .. spell_data.en)
 	else
@@ -191,30 +212,48 @@ function cast_spell(ability_name)
 	end
 end
 
+-----------------------------------------------------------
+-- Executes a job ability and sends a pretimer for recast tracking.
+-- @param job    Unused (kept for interface compatibility)
+-- @param input  Job ability name string
+-----------------------------------------------------------
 function job_ability(job, input)
     windower.send_command('input ' .. unify_prefix['/ja'] .. ' \"' .. input .. '\" ' .. target)
     
 	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/ja'] .. ' 1.5 ' .. input)
 end
 
+-----------------------------------------------------------
+-- Executes a BST pet command and sends a pretimer.
+-- @param input  BST pet ability name
+-----------------------------------------------------------
 function bstpet_command(input)
 	windower.send_command('input /bstpet \"' .. input .. '\" ' .. target)
     
 	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/bstpet'] .. ' 1.5 ' .. input)
 end
 
+-----------------------------------------------------------
+-- Executes a pet command (SMN ward, PUP maneuver, etc.)
+-- and sends a pretimer for recast tracking.
+-- @param input  Pet ability name
+-----------------------------------------------------------
 function pet_command(input)
     windower.send_command('input ' .. unify_prefix['/pet'] .. ' \"' .. input .. '\" ' .. target)
     
 	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/pet'] .. ' 1.5 ' .. input)
 end
 
+-----------------------------------------------------------
+-- Casts the optimal storm spell based on current weather
+-- and day element. Prefers weather element unless day is
+-- stronger or weather is absent.
+-----------------------------------------------------------
 function handle_storm()
 	local input = get_elements()
 	local day_element = input['day_element']
 	local weather_element = input['weather_element']
 	local weather_intensity = input['weather_intensity']
-	-- Set target to self for storms, then cast the spell name directly
 	local old_target = target
 	target = '<me>'
 	if weather_element ~= 'None' and (weather_intensity == 2 or weather_element ~= elements.weak_to[day_element]) then
@@ -225,6 +264,11 @@ function handle_storm()
 	target = old_target
 end
 
+-----------------------------------------------------------
+-- Casts the optimal helix spell based on current weather
+-- and day element. Same logic as handle_storm for element
+-- selection.
+-----------------------------------------------------------
 function handle_helix()
 	local input = get_elements()
 	local day_element = input['day_element']
@@ -237,17 +281,24 @@ function handle_helix()
 	end
 end
 
+-----------------------------------------------------------
+-- Queries the game for an ability's recast duration and
+-- broadcasts a timerui command to all characters.
+-- Handles spell recasts, JA recasts, and special cases
+-- (stratagems, maneuvers, BST ready).
+-- @param abilityType  Unified prefix ('/ma', '/ja', etc.)
+-- @param abilityName  Ability name string
+-- @param caster       Character name who used the ability
+-----------------------------------------------------------
 function get_duration(abilityType, abilityName, caster)
     local duration = 0
     local main_job = windower.ffxi.get_player().main_job
     
-    -- Normalize input to lowercase for consistent comparison
     local name_lower = abilityName:lower()
 
     if abilityType == unify_prefix['/ma'] then
         local spell_recasts = windower.ffxi.get_spell_recasts()
         
-        -- Case-insensitive search through resources
         local spell_id = res.spells:find(function(s) return s.en:lower() == name_lower end)
 		local spell_data = res.spells[spell_id]
 		abilityName = spell_data['en']
@@ -259,17 +310,15 @@ function get_duration(abilityType, abilityName, caster)
     if abilityType == unify_prefix['/ja'] then
         local ja_recasts = windower.ffxi.get_ability_recasts()
         
-        -- Case-insensitive search through resources
 		local ja_id = res.job_abilities:find(function(j) return j.en:lower() == name_lower end)
 		local ja_data = res.job_abilities[ja_id]
 		abilityName = ja_data and ja_data['en'] or abilityName
 
-		-- Your original line that was failing
 		if type(ja_data) == 'table' and ja_data.recast_id then
 			duration = ja_recasts[ja_data.recast_id] or 0
 		end
         
-        -- Fallback overrides
+        -- Fallback overrides for shared-recast abilities
         if duration == 0 then
             if main_job == 'SCH' and (name_lower:contains('stratagem') or name_lower:contains('arts')) then
                 duration = ja_recasts[231] or 0
@@ -284,14 +333,22 @@ function get_duration(abilityType, abilityName, caster)
         end
     end
 
-    -- Create the timer
     if duration > 0 then
         local col = get_character_column(caster)
-        -- Using abilityName here, but the lookup was handled via name_lower
         windower.send_command('send @all box timerui ' .. duration .. ' ' .. duration .. ' ' .. caster .. ' ' .. abilityType .. ' ' .. col .. ' "' .. abilityName .. '"')
     end
 end
 
+-----------------------------------------------------------
+-- Creates a visual timer bar in the UI for a specific
+-- ability on a specific character's column.
+-- @param duration         Total timer duration in seconds
+-- @param charge_duration  Charge time (unused, reserved)
+-- @param abilityType      Unified prefix for the ability
+-- @param abilityName      Display label for the timer
+-- @param casterName       Character who owns this timer
+-- @param col_index        UI column index for placement
+-----------------------------------------------------------
 function create_network_timer(duration, charge_duration, abilityType, abilityName, casterName, col_index)
     local label = abilityName
 	local index = casterName .. abilityName
@@ -300,10 +357,9 @@ function create_network_timer(duration, charge_duration, abilityType, abilityNam
 	duration = tonumber(duration) or 0
 	col_index = tonumber(col_index) or 1
 
-	-- Calculate X: Based on the column index
 	local x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
 
-	-- Calculate Y: Based on the number of active rows for this specific column
+	-- Stack below existing timers in this column
 	local row_count = 0
 	for _, timer in pairs(active_network_timers) do
 		if timer.column == col_index then
@@ -323,12 +379,14 @@ function create_network_timer(duration, charge_duration, abilityType, abilityNam
     reposition_column_elements(col_index)
 end
 
+-- Prerender event: updates timer bars every frame, handles icon visibility
 windower.register_event('prerender', function()
     if not windower.ffxi.get_player() then return end
     
     local current_focus_target = target or ""
     local current_active_caster = caster or "Makaria" 
     
+    -- Update column header icons to reflect current caster/target
     for char_name, header_id in pairs(column_headers) do
         local is_caster = (char_name:lower() == current_active_caster:lower())
         local is_target = (current_focus_target ~= "<bt>" and current_focus_target ~= "" and char_name:lower() == current_focus_target:lower())
@@ -347,6 +405,7 @@ windower.register_event('prerender', function()
         header_id:text(char_name:upper())
     end
 
+    -- Tick down active timers and clean up expired ones
     local updated_columns = {}
     local expired_timers = {}
     for label, timer in pairs(active_network_timers) do
@@ -377,6 +436,3 @@ windower.register_event('prerender', function()
         reposition_column_elements(col_index)
     end
 end)
-
--- Master textures removed — each timer now creates its own image instances
--- in create_timer_ui() (helper_functions.lua)

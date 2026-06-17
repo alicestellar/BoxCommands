@@ -16,15 +16,7 @@ UI_Layout = {
     bar_width = 15,     
 }
 
--- Maps character names to their UI column index (1-based)
-char_columns = {
-    ['Makaria']  = 1,
-    ['Amaranti'] = 2,
-    ['Aenura']   = 3,
-    ['Midnaria'] = 4,
-    ['Entrapta'] = 5,
-    ['Luccaria'] = 6
-}
+-- Note: char_columns removed in v2.0.0 — column positions now driven by settings_manager
 
 -- ====================================================================
 -- MAGIC & ELEMENTAL TABLES
@@ -41,8 +33,7 @@ elements.strong_to = {['Light']='Dark', ['Dark']='Light', ['Fire']='Water', ['Ic
 -- GAME DATA & CONFIGURATION TABLES
 -- ====================================================================
 
--- Maps party slot indices to macro book numbers
-macro_sets = {[0] = 24, [1] = 25, [2] = 26, [3] = 27, [4] = 28, [5] = 29}
+-- Note: macro_sets removed in v2.0.0 — macro mapping now driven by macro_config.lua
 
 -- Ability lookup tables indexed by [language][prefix][name] = resource_id
 validabils = {}

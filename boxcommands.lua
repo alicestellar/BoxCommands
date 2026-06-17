@@ -32,11 +32,122 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 _addon.name    = 'BoxCommands'
 _addon.author  = 'Makaria'
-_addon.version = '1.2.0'
+_addon.version = '2.0.0'
 _addon.command = "box"
+
+local res = require('resources')
+local settings_manager = require('settings_manager')
+local macro_config = require('macro_config')
 
 require ('commands')
 
+-- ====================================================================
+-- ADDON LOAD: Initialize settings, register character, set online
+-- ====================================================================
+settings_manager.load()
+
+-- Track the last registered character name (used by shareslot command)
+local last_registered_character = nil
+
+local player_info = windower.ffxi.get_player()
+if player_info then
+    local player_name = player_info.name
+    last_registered_character = player_name
+    settings_manager.register_character(player_name)
+    settings_manager.set_online(player_name, true)
+
+    -- Update job info from current player state
+    local main_job = res.jobs[player_info.main_job_id] and res.jobs[player_info.main_job_id].ens or ''
+    local sub_job = res.jobs[player_info.sub_job_id] and res.jobs[player_info.sub_job_id].ens or ''
+    settings_manager.update_job(player_name, main_job, sub_job)
+
+    -- Update max HP for current job
+    local max_hp = player_info.vitals and player_info.vitals.max_hp or 0
+    if main_job ~= '' and max_hp > 0 then
+        settings_manager.update_max_hp(player_name, main_job, max_hp)
+    end
+
+    settings_manager.save()
+
+    -- Set initial caster from settings (position 1 character, or this character)
+    local slot1_char = settings_manager.get_slot_character(1)
+    if slot1_char then
+        caster = slot1_char
+    else
+        caster = player_name
+    end
+end
+
+-- ====================================================================
+-- LOGIN EVENT: Detect character switch without addon reload
+-- ====================================================================
+windower.register_event('login', function(name)
+    -- Re-register the new character on the same client
+    settings_manager.load() -- Reload settings in case another box changed them
+    settings_manager.register_character(name)
+    settings_manager.set_online(name, true)
+
+    local pl = windower.ffxi.get_player()
+    if pl then
+        local main_job = res.jobs[pl.main_job_id] and res.jobs[pl.main_job_id].ens or ''
+        local sub_job = res.jobs[pl.sub_job_id] and res.jobs[pl.sub_job_id].ens or ''
+        settings_manager.update_job(name, main_job, sub_job)
+
+        local max_hp = pl.vitals and pl.vitals.max_hp or 0
+        if main_job ~= '' and max_hp > 0 then
+            settings_manager.update_max_hp(name, main_job, max_hp)
+        end
+    end
+
+    settings_manager.save()
+
+    -- Update last registered for shareslot
+    last_registered_character = name
+
+    -- Rebuild UI headers and keybinds for new character
+    setupCommands()
+    if initialize_column_headers then
+        initialize_column_headers()
+    end
+end)
+
+-- ====================================================================
+-- LOGOUT EVENT: Mark previous character offline
+-- ====================================================================
+windower.register_event('logout', function(name)
+    settings_manager.set_online(name, false)
+    settings_manager.save()
+end)
+
+-- ====================================================================
+-- ADDON UNLOAD: Mark character offline and save settings
+-- ====================================================================
+windower.register_event('unload', function()
+    local pl = windower.ffxi.get_player()
+    if pl then
+        settings_manager.set_online(pl.name, false)
+        settings_manager.save()
+    end
+end)
+
+-- ====================================================================
+-- JOB CHANGE EVENT: Update job in settings, schedule HP refresh
+-- ====================================================================
+windower.register_event('job change', function(main_job_id, main_job_level, sub_job_id, sub_job_level)
+    local main_job = res.jobs[main_job_id] and res.jobs[main_job_id].ens or ''
+    local sub_job = res.jobs[sub_job_id] and res.jobs[sub_job_id].ens or ''
+    local pl = windower.ffxi.get_player()
+    if pl then
+        settings_manager.update_job(pl.name, main_job, sub_job)
+        settings_manager.save()
+    end
+    -- Delay HP update to allow gear to load
+    windower.send_command('@wait 3; box refreshhp')
+end)
+
+-- ====================================================================
+-- COMMAND DISPATCH
+-- ====================================================================
 windower.register_event('addon command', function (command, ...)
 	local arg = {...}
 
@@ -59,6 +170,18 @@ windower.register_event('addon command', function (command, ...)
 	-- target: Set the spell/ability target (character name or <t>, <me>, etc.)
 	elseif command == 'target' then
 		set_target(arg[1])
+
+	-- switchto: Switch caster to character at given position, update macro
+	elseif command == 'switchto' then
+		handle_switchto(tonumber(arg[1]))
+
+	-- setslot: Set the current character's position slot
+	elseif command == 'setslot' then
+		handle_setslot(tonumber(arg[1]))
+
+	-- refreshhp: Capture current max HP and save to settings
+	elseif command == 'refreshhp' then
+		handle_refreshhp()
 
 	-- cast: Cast the highest available tier of a spell on the designated caster
 	elseif command == 'cast' then
@@ -216,6 +339,117 @@ windower.register_event('addon command', function (command, ...)
 	end
 end)
 
+-- ====================================================================
+-- SWITCHTO HANDLER: Switch caster to character at position N
+-- ====================================================================
+
+-----------------------------------------------------------
+-- Handles the 'switchto' command. Looks up which character
+-- is at the given position, sets them as caster, and switches
+-- macro to their current job's book/set from macro_config.
+-- @param position  Slot position number (1-6)
+-----------------------------------------------------------
+function handle_switchto(position)
+    if not position or position < 1 or position > 6 then
+        windower.add_to_chat(123, 'BoxCommands: Invalid position. Use 1-6.')
+        return
+    end
+
+    local char_name = settings_manager.get_slot_character(position)
+    if not char_name then
+        windower.add_to_chat(123, 'BoxCommands: No character assigned to position ' .. position)
+        return
+    end
+
+    -- Send setcaster to all boxes
+    windower.send_command('send @all box setcaster ' .. char_name)
+
+    -- Look up macro book/set for this character's current job
+    local char_data = settings_manager.get_character(char_name)
+    if char_data and char_data.main_job and char_data.main_job ~= '' then
+        local job = char_data.main_job:upper()
+
+        -- Check per-character override first, then fall back to global
+        local macro_entry = nil
+        if macro_config[char_name] and macro_config[char_name][job] then
+            macro_entry = macro_config[char_name][job]
+        elseif macro_config.global[job] then
+            macro_entry = macro_config.global[job]
+        end
+
+        if macro_entry then
+            set_macro_page(macro_entry.set, macro_entry.book)
+        end
+    end
+end
+
+-- ====================================================================
+-- REFRESHHP HANDLER: Capture max HP and save to settings
+-- ====================================================================
+
+-----------------------------------------------------------
+-- Captures the current player's max HP and saves it to
+-- settings under their current main job.
+-----------------------------------------------------------
+function handle_refreshhp()
+    local pl = windower.ffxi.get_player()
+    if not pl then return end
+
+    local main_job = res.jobs[pl.main_job_id] and res.jobs[pl.main_job_id].ens or ''
+    local max_hp = pl.vitals and pl.vitals.max_hp or 0
+
+    if main_job ~= '' and max_hp > 0 then
+        settings_manager.update_max_hp(pl.name, main_job, max_hp)
+    end
+end
+
+-- ====================================================================
+-- SETSLOT HANDLER: Assign current character to a specific position
+-- ====================================================================
+
+-----------------------------------------------------------
+-- Sets the current character's position slot in the
+-- characters data file. Saves immediately.
+-- @param position  Slot number to assign (1-6, or 0 for unassigned)
+-----------------------------------------------------------
+function handle_setslot(position)
+    if not position or position < 0 or position > 18 then
+        windower.add_to_chat(123, 'BoxCommands: Invalid position. Use 0-18 (0 = unassigned, 1-6 = party, 7-18 = alliance).')
+        return
+    end
+
+    local pl = windower.ffxi.get_player()
+    if not pl then
+        windower.add_to_chat(123, 'BoxCommands: No player data available.')
+        return
+    end
+
+    local current_name = pl.name
+    settings_manager.reload_characters()
+    local char_data = settings_manager.get_character(current_name)
+
+    if not char_data then
+        -- Register first if not in the file
+        settings_manager.register_character(current_name)
+        char_data = settings_manager.get_character(current_name)
+    end
+
+    if char_data then
+        char_data.position = position
+        settings_manager.save()
+        windower.add_to_chat(207, 'BoxCommands: ' .. current_name .. ' set to position ' .. position .. '.')
+
+        -- Rebuild UI to reflect the change
+        setupCommands()
+        if initialize_column_headers then
+            initialize_column_headers()
+        end
+    end
+end
+
+-- ====================================================================
+-- INITIAL SETUP ON LOAD
+-- ====================================================================
 setupCommands()
 
 if initialize_column_headers then

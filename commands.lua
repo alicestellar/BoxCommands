@@ -1,6 +1,8 @@
 require ('helper_functions')
 local res = require('resources')
 local texts = require('texts')
+local settings_manager = require('settings_manager')
+local macro_config = require('macro_config')
 
 -- Active tracking table for ticking down live timers
 active_network_timers = {}
@@ -16,10 +18,10 @@ target_icons = {}
 
 -----------------------------------------------------------
 -- Creates column header labels and caster/target icons
--- for the timer UI. One column per character.
+-- for the timer UI. One column per character position (1-6).
+-- Reads character names from settings for display.
 -----------------------------------------------------------
 function initialize_column_headers()
-    local names = {'Makaria', 'Amaranti', 'Aenura', 'Midnaria', 'Entrapta', 'Luccaria'}
     local icon_base_path = windower.windower_path .. 'plugins/icons/'
 
     -- Clean up existing primitives first
@@ -31,34 +33,38 @@ function initialize_column_headers()
     caster_icons = {}
     target_icons = {}
 
-    for idx, char_name in ipairs(names) do
-        local col_idx = idx - 1
-        local header_x = UI_Layout.base_x + (col_idx * UI_Layout.column_width)
-        
-        -- Text Label
-        local ui_id = texts.new(char_name .. '_header')
-        ui_id:font('Arial')
-        ui_id:size(10)
-        ui_id:text(char_name:upper())
-        ui_id:pos(header_x + 18, UI_Layout.base_y - 22)
-        ui_id:visible(true) 
-        column_headers[char_name] = ui_id
+    -- Only create headers for positions that have an assigned character
+    for i = 1, 6 do
+        local char_name = settings_manager.get_slot_character(i)
+        if char_name then
+            local col_idx = i - 1
+            local header_x = UI_Layout.base_x + (col_idx * UI_Layout.column_width)
+            
+            -- Text Label (use unique name to prevent stale primitive conflicts on reload)
+            local ui_id = texts.new('box_hdr_' .. i)
+            ui_id:font('Arial')
+            ui_id:size(10)
+            ui_id:text(char_name:upper())
+            ui_id:pos(header_x + 18, UI_Layout.base_y - 22)
+            ui_id:visible(true) 
+            column_headers[char_name] = ui_id
 
-        -- Caster Icon
-        local c_img = images.new()
-        c_img:path(icon_base_path .. 'spells/00001.png')
-        c_img:size(14, 14)
-        c_img:pos(header_x - 3, UI_Layout.base_y - 29)
-        c_img:visible(false)
-        caster_icons[char_name] = c_img
+            -- Caster Icon
+            local c_img = images.new()
+            c_img:path(icon_base_path .. 'spells/00001.png')
+            c_img:size(14, 14)
+            c_img:pos(header_x - 3, UI_Layout.base_y - 29)
+            c_img:visible(false)
+            caster_icons[char_name] = c_img
 
-        -- Target Icon
-        local t_img = images.new()
-        t_img:path(icon_base_path .. 'abilities/00124.png')
-        t_img:size(14, 14)
-        t_img:pos(header_x + 85, UI_Layout.base_y - 29)
-        t_img:visible(false)
-        target_icons[char_name] = t_img
+            -- Target Icon
+            local t_img = images.new()
+            t_img:path(icon_base_path .. 'abilities/00124.png')
+            t_img:size(14, 14)
+            t_img:pos(header_x + 85, UI_Layout.base_y - 29)
+            t_img:visible(false)
+            target_icons[char_name] = t_img
+        end
     end
 end
 
@@ -70,7 +76,9 @@ party = windower.ffxi.get_party()
 language = 'english'
 target = '<t>'
 
-caster = 'Makaria'
+-- Caster initialized from settings (position 1) or empty string.
+-- Will be overwritten by boxcommands.lua on load once settings are ready.
+caster = ''
 
 -----------------------------------------------------------
 -- Sets the active caster character for subsequent commands.
@@ -79,56 +87,90 @@ caster = 'Makaria'
 function set_caster(name)
     if name then
         caster = name
-        -- Note: Full validation (is character in party?) deferred to Unit 2 (settings-driven)
     end
 end
 
 -----------------------------------------------------------
 -- Binds hotkeys for quick character switching and targeting.
--- Ctrl+F1-F6 exec character scripts, Alt+F1-F6 set targets.
+-- Ctrl+F1-F6 trigger switchto command (settings-driven).
+-- Alt+F1-F6 set targets from settings positions.
 -----------------------------------------------------------
-function setupCommands() 
-    windower.send_command('bind ^f1 exec Makaria.txt')
-    windower.send_command('bind ^f2 exec Amaranti.txt')
-    windower.send_command('bind ^f3 exec Aenura.txt')
-    windower.send_command('bind ^f4 exec Midnaria.txt')
-    windower.send_command('bind ^f5 exec Entrapta.txt')
-    windower.send_command('bind ^f6 exec Luccaria.txt')
+function setupCommands()
+    -- Read characters from settings at positions 1-6
+    for i = 1, 6 do
+        local char_name = settings_manager.get_slot_character(i)
+        if char_name then
+            -- Ctrl+F{N}: Switch caster to position N and update macro
+            windower.send_command('bind ^f' .. i .. ' box switchto ' .. i)
+            -- Alt+F{N}: Set target to character at position N
+            windower.send_command('bind !f' .. i .. ' send @all box target ' .. char_name)
+        else
+            -- Unbind positions that have no character assigned
+            windower.send_command('bind ^f' .. i .. ' echo BoxCommands: No character at position ' .. i)
+            windower.send_command('bind !f' .. i .. ' echo BoxCommands: No character at position ' .. i)
+        end
+    end
 
-    windower.send_command('bind !f1 send @all box target Makaria')
-	windower.send_command('bind !f2 send @all box target Amaranti')
-	windower.send_command('bind !f3 send @all box target Aenura')
-	windower.send_command('bind !f4 send @all box target Midnaria')
-	windower.send_command('bind !f5 send @all box target Entrapta')
-	windower.send_command('bind !f6 send @all box target Luccaria')
-
-	windower.send_command('bind !` send @all box target <t>')
+    -- Alt+` targets <t> (current target) on all boxes
+    windower.send_command('bind !` send @all box target <t>')
 end
 
 -----------------------------------------------------------
--- Switches macro book/set based on party slot and job type.
--- @param slot     Party slot number or 'default'
+-- Switches macro book/set based on job using macro_config.
+-- @param slot     Character name or 'default'
 -- @param jobType  'main' or 'sub' job context
 -----------------------------------------------------------
-function set_macro(slot, jobType) 
-	player = initialize_globals(player)
-	party = windower.ffxi.get_party()
-	if not party then return end
-	if jobType == 'main' then
-		if (slot == 'default') then
-			set_macro_page(1, 1)
-		else
-			local slot_num = tonumber(slot)
-			if slot_num and macro_sets[slot_num] then
-				set_macro_page(2, macro_sets[slot_num])
-			end
-		end
-	elseif jobType == 'sub' then
-		local slot_num = tonumber(slot)
-		if slot_num and macro_sets[slot_num+6] then
-			set_macro_page(2, macro_sets[slot_num+6])
-		end
-	end
+function set_macro(slot, jobType)
+    player = initialize_globals(player)
+    party = windower.ffxi.get_party()
+    if not party then return end
+
+    if jobType == 'main' then
+        if slot == 'default' then
+            set_macro_page(1, 1)
+        else
+            -- Look up current job for the caster from settings
+            local char_data = settings_manager.get_character(caster)
+            local job = ''
+            if char_data and char_data.main_job then
+                job = char_data.main_job:upper()
+            end
+
+            if job ~= '' then
+                -- Check per-character override first, then global
+                local macro_entry = nil
+                if macro_config[caster] and macro_config[caster][job] then
+                    macro_entry = macro_config[caster][job]
+                elseif macro_config.global[job] then
+                    macro_entry = macro_config.global[job]
+                end
+
+                if macro_entry then
+                    set_macro_page(macro_entry.set, macro_entry.book)
+                end
+            end
+        end
+    elseif jobType == 'sub' then
+        -- Look up sub job for the caster from settings
+        local char_data = settings_manager.get_character(caster)
+        local job = ''
+        if char_data and char_data.sub_job then
+            job = char_data.sub_job:upper()
+        end
+
+        if job ~= '' then
+            local macro_entry = nil
+            if macro_config[caster] and macro_config[caster][job] then
+                macro_entry = macro_config[caster][job]
+            elseif macro_config.global[job] then
+                macro_entry = macro_config.global[job]
+            end
+
+            if macro_entry then
+                set_macro_page(macro_entry.set, macro_entry.book)
+            end
+        end
+    end
 end
 
 -----------------------------------------------------------
@@ -384,7 +426,7 @@ windower.register_event('prerender', function()
     if not windower.ffxi.get_player() then return end
     
     local current_focus_target = target or ""
-    local current_active_caster = caster or "Makaria" 
+    local current_active_caster = caster or "" 
     
     -- Update column header icons to reflect current caster/target
     for char_name, header_id in pairs(column_headers) do

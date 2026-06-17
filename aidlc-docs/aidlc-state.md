@@ -34,8 +34,8 @@
 
 ### CONSTRUCTION PHASE
 - [x] Unit 0: Debug & Stabilize Baseline - COMPLETED (1.1.1)
-- [ ] Unit 1: Documentation & Cleanup - NEXT
-- [ ] Unit 2: Settings & Configuration Foundation
+- [x] Unit 1: Documentation & Cleanup - COMPLETED (1.2.0)
+- [ ] Unit 2: Settings & Configuration Foundation - NEXT
 - [ ] Unit 3: UI Visual Overhaul
 - [ ] Unit 4: Intelligent Targeting
 - [ ] Unit 5: Healing Spell Selection Algorithm

@@ -196,6 +196,7 @@
   - All commands (cast, ja, pet, bstpet, pact, etc.) work across alliance parties via IPC, not just within the primary party.
   - Job broadcasting (FR-5b) extends to alliance members.
   - Keybind system extends or adapts to support selecting casters beyond the original 6 (party 1).
+  - Auto-assignment of position slots expands from 6 to 18 (position 0/unassigned after 18).
 
 ---
 
@@ -254,9 +255,15 @@
 - **Acceptance Criteria**:
 
 #### FR-13a: TP Status Tracking
-- Each box writes a three-state TP status to the shared file: `not_ready` (TP < 1000), `ready` (TP >= 1000), or `capped` (TP = 3000).
-- Status updates on state transitions only (crosses 1000 threshold up or down, reaches 3000).
-- Skillchain planner reads these statuses to determine who can participate.
+- Use `get_party()` TP data directly at query time for same-party members (no disk writes).
+- Skillchain planner polls `get_party()` when triggered to determine who has 1000+ TP.
+- Slight delay acceptable (game updates party TP every few seconds).
+- For alliance members outside the party: use counter-based IPC collection with fallback timeout.
+  - Controller sends `reporttp` to all alliance members.
+  - Each box responds with their TP status.
+  - Planner executes when all expected responses are in OR the fallback timeout elapses (whichever first).
+  - Missing responders are excluded from the plan (user notified).
+  - Fallback timeout is configurable in settings file (default TBD via testing).
 
 #### FR-13b: Weapon Skill Availability
 - Must know which weapon skills each character has access to.

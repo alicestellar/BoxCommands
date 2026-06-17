@@ -7,40 +7,40 @@ These items need retesting after the fixes applied today. Mark with **t** (worki
 ## Fixes Applied This Session
 
 ### Storm/Helix (was: target included in spell name)
-- [ ] `//box storm` — casts appropriate storm spell on self
-- [ ] `//box helix` — casts appropriate helix spell on current target
+- [t] `//box storm` — casts appropriate storm spell on self
+- [t] `//box helix` — casts appropriate helix spell on current target
 
 ### Pact Astralflow (was: error in images.lua)
-- [ ] `//box pact astralflow` — executes Astral Flow pact for active avatar
-- [ ] No images.lua error after executing astralflow pact
+- [t] `//box pact astralflow` — executes Astral Flow pact for active avatar
+- [t] No images.lua error after executing astralflow pact
 
 ### Avatar Release (was: repeating error in images.lua)
-- [ ] Release avatar (dismiss pet) — no repeating errors in chat
-- [ ] Timer bars continue functioning normally after avatar release
+- [t] Release avatar (dismiss pet) — no repeating errors in chat
+- [t] Timer bars continue functioning normally after avatar release
 
 ### Macro Switching (was: error accessing party data)
-- [ ] `//box macro default` — switches to macro book 1, set 1 without error
+- [t] `//box macro default` — switches to macro book 1, set 1 without error
 
 ### Macro Switching — Job-Based (DEFERRED to Unit 2)
 Note: `//box macro 1 main` requires job-aware settings file to work properly. Testing deferred.
 
 ### Timer System (confirm previous fixes still hold)
-- [ ] Timers appear for spells after casting
-- [ ] Timers appear for pacts after using blood pacts
-- [ ] Timers appear for job abilities
-- [ ] Multiple timers stack and expire cleanly (no errors)
-- [ ] Background bars are correctly scaled (not comically large)
+- [t] Timers appear for spells after casting
+- [t] Timers appear for pacts after using blood pacts
+- [t] Timers appear for job abilities
+- [t] Multiple timers stack and expire cleanly (no errors)
+- [t] Background bars are correctly scaled (not comically large)
 
 ---
 
 ## Previously Passing Items (Spot Check)
 Quick spot check to make sure we didn't regress anything:
 
-- [ ] `//box cast cure` — still works
-- [ ] `//box setcaster <name>` — still works
-- [ ] `//box pact bp70` — still works
-- [ ] Ctrl+F1 script — still works
-- [ ] Alt+F1 target — still works
+- [t] `//box cast cure` — still works
+- [t] `//box setcaster <name>` — still works
+- [t] `//box pact bp70` — still works
+- [t] Ctrl+F1 script — still works
+- [t] Alt+F1 target — still works
 
 ---
 
@@ -60,5 +60,9 @@ These are acknowledged issues that will be fixed in later units:
 ## Notes
 
 ```text
+box pact astralflow should check for astral flow status. 
+If it is not on, then the job ability astral flow should be used first, followed by wait 0.5, 
+THEN execute the pact. Astral flow can only be executed if you already have the status for it.
+
 
 ```

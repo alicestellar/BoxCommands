@@ -549,16 +549,16 @@ end
 
 -----------------------------------------------------------
 -- Returns the UI column index for a character name.
+-- Reads from settings_manager positions (1-6).
 -- @param char_name  Character name to look up
 -- @return Column index (1-based), defaults to 1 if not found
 -----------------------------------------------------------
 function get_character_column(char_name)
     if not char_name then return 1 end
-    local name = char_name:lower()
-    for k, v in pairs(char_columns) do
-        if k:lower() == name then
-            return v
-        end
+    local sm = require('settings_manager')
+    local char_data = sm.get_character(char_name)
+    if char_data and char_data.position and char_data.position > 0 then
+        return char_data.position
     end
     return 1
 end

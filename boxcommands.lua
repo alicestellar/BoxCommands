@@ -336,6 +336,10 @@ windower.register_event('addon command', function (command, ...)
 		if caster_name then
 			create_network_timer(duration, charge_duration, abilityType, abilityName, caster_name, col_index)
 		end
+
+	-- refreshui: Reload characters from settings and rebuild entire UI
+	elseif command == 'refreshui' then
+		handle_refreshui()
 	end
 end)
 
@@ -448,6 +452,23 @@ function handle_setslot(position)
 end
 
 -- ====================================================================
+-- REFRESHUI HANDLER: Reload characters and rebuild UI
+-- ====================================================================
+
+-----------------------------------------------------------
+-- Reloads character data from settings and rebuilds the
+-- entire UI (keybinds, headers, status bars, buff icons).
+-- Called when another box comes online and broadcasts refreshui.
+-----------------------------------------------------------
+function handle_refreshui()
+    settings_manager.reload_characters()
+    setupCommands()
+    if initialize_column_headers then
+        initialize_column_headers()
+    end
+end
+
+-- ====================================================================
 -- INITIAL SETUP ON LOAD
 -- ====================================================================
 setupCommands()
@@ -455,3 +476,6 @@ setupCommands()
 if initialize_column_headers then
     initialize_column_headers()
 end
+
+-- Notify other boxes to refresh their UI (this character is now online)
+windower.send_command('send @others box refreshui')

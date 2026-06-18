@@ -15,23 +15,18 @@ ui_hidden_since = 0
 local ctrl_held = false
 local alt_held = false
 local modifier_release_time = 0  -- Timestamp of last Ctrl/Alt release
+local modifier_press_time = 0    -- Timestamp of last Ctrl/Alt press
 
--- Keyboard event: track Ctrl/Alt held state with release cooldown
+-- Keyboard event: track Ctrl/Alt held state
 windower.register_event('keyboard', function(dik, pressed, flags, blocked)
     if dik == 29 or dik == 157 then  -- LCtrl or RCtrl
-        if pressed then
-            ctrl_held = true
-        else
-            ctrl_held = false
-            modifier_release_time = os.clock()
-        end
+        ctrl_held = pressed
+        if pressed then modifier_press_time = os.clock()
+        else modifier_release_time = os.clock() end
     elseif dik == 56 or dik == 184 then  -- LAlt or RAlt
-        if pressed then
-            alt_held = true
-        else
-            alt_held = false
-            modifier_release_time = os.clock()
-        end
+        alt_held = pressed
+        if pressed then modifier_press_time = os.clock()
+        else modifier_release_time = os.clock() end
     end
 end)
 
@@ -43,6 +38,11 @@ column_headers = {}
 -- Storage tables to track graphical role icons (arrows)
 caster_icons = {}
 target_icons = {}
+
+-- Storage for buff icon images per character
+buff_icons = {}
+-- Track last known buffs to avoid unnecessary redraws
+buff_icons_last = {}
 
 -- Header background images
 header_bgs = {}
@@ -63,6 +63,11 @@ function initialize_column_headers()
     for _, img_id in pairs(caster_icons) do img_id:destroy() end
     for _, img_id in pairs(target_icons) do img_id:destroy() end
     for _, img_id in pairs(header_bgs) do img_id:destroy() end
+    for _, char_icons in pairs(buff_icons) do
+        for _, icon in pairs(char_icons) do
+            icon:destroy()
+        end
+    end
     for _, char_bars in pairs(status_bars) do
         for _, bar in pairs(char_bars) do
             if type(bar) == 'table' then
@@ -85,6 +90,8 @@ function initialize_column_headers()
     target_icons = {}
     header_bgs = {}
     status_bars = {}
+    buff_icons = {}
+    buff_icons_last = {}
 
     -- PASS 1: Create header backgrounds FIRST (renders behind everything else)
     for i = 1, 6 do
@@ -244,6 +251,30 @@ function initialize_column_headers()
             char_bars.TP.bg:size(tp_bar_actual_width - dot_area_width - 1, status_bar_height)
 
             status_bars[char_name] = char_bars
+
+            -- Buff icon slots (positioned above header, stacking upward)
+            local icon_size = UI_Style.buff_icon_size
+            local icons_per_row = UI_Style.buff_icons_per_row
+            local max_icons = UI_Style.buff_max_icons
+            local char_buff_images = {}
+
+            for slot = 1, max_icons do
+                local row = math.ceil(slot / icons_per_row)  -- 1-based row (1 = bottom, closest to header)
+                local col = ((slot - 1) % icons_per_row)     -- 0-based column
+
+                local icon_x = header_x + (col * icon_size)
+                local icon_y = header_y - (row * icon_size)  -- stack upward from header
+
+                local icon_img = images.new()
+                icon_img:fit(false)
+                icon_img:size(icon_size, icon_size)
+                icon_img:pos(icon_x, icon_y)
+                icon_img:visible(false)
+
+                char_buff_images[slot] = icon_img
+            end
+
+            buff_icons[char_name] = char_buff_images
         end
     end
 end
@@ -616,9 +647,24 @@ windower.register_event('prerender', function()
     -- - Player is in combat (engaged status = 1)
     -- ================================================================
     local info = windower.ffxi.get_info()
-    local modifier_active = ctrl_held or alt_held or (os.clock() - modifier_release_time) < 0.5
     local pl_mob = windower.ffxi.get_mob_by_target('me')
     local in_combat = pl_mob and pl_mob.status == 1
+    
+    -- Track how long menu has been closed (for stuck modifier reset)
+    if info and info.menu_open then
+        _menu_closed_since = nil
+    else
+        if not _menu_closed_since then
+            _menu_closed_since = os.clock()
+        end
+        -- If menu has been closed for more than 1 second AND no recent keypress, reset stuck modifiers
+        if (os.clock() - _menu_closed_since) > 1 and (os.clock() - modifier_press_time) > 0.5 then
+            ctrl_held = false
+            alt_held = false
+        end
+    end
+    
+    local modifier_active = ctrl_held or alt_held or (os.clock() - modifier_release_time) < 0.5
     local menu_open = info and info.menu_open and not modifier_active and not in_combat
 
     if menu_open and not ui_hidden then
@@ -637,7 +683,6 @@ windower.register_event('prerender', function()
                     if bar.label then bar.label:visible(false) end
                 end
             end
-            -- Hide TP dots
             if char_bars.tp_dots then
                 for _, dot in pairs(char_bars.tp_dots) do
                     if dot.bg then dot.bg:visible(false) end
@@ -665,7 +710,6 @@ windower.register_event('prerender', function()
                     if bar.label then bar.label:visible(true) end
                 end
             end
-            -- Show TP dot backgrounds (fills controlled by prerender TP logic)
             if char_bars.tp_dots then
                 for _, dot in pairs(char_bars.tp_dots) do
                     if dot.bg then dot.bg:visible(true) end
@@ -677,6 +721,7 @@ windower.register_event('prerender', function()
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(true) end
             if timer.label then timer.label:visible(true) end
         end
+        buff_icons_last = {}
     end
 
     -- Safety: if hidden for more than 60 seconds, force-show
@@ -704,6 +749,7 @@ windower.register_event('prerender', function()
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(true) end
             if timer.label then timer.label:visible(true) end
         end
+        buff_icons_last = {}
     end
 
     -- If still hidden, skip all rendering updates
@@ -809,6 +855,61 @@ windower.register_event('prerender', function()
                         local dot = bars.tp_dots[dot_idx]
                         if dot and dot.fill then
                             dot.fill:visible(thousands >= dot_idx)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- ================================================================
+    -- Update buff/debuff icons from party data
+    -- ================================================================
+    local local_pl = windower.ffxi.get_player()
+    if party_data then
+        for char_name, icon_slots in pairs(buff_icons) do
+            -- Get buff list for this character
+            local buffs = {}
+
+            -- Local player: use get_player().buffs (more reliable)
+            if local_pl and local_pl.name and local_pl.name:lower() == char_name:lower() then
+                if local_pl.buffs then
+                    for _, buff_id in pairs(local_pl.buffs) do
+                        if buff_id and buff_id ~= 255 then
+                            buffs[#buffs + 1] = buff_id
+                        end
+                    end
+                end
+            else
+                -- Other party members: use get_party() buffs
+                for key, member in pairs(party_data) do
+                    if type(member) == 'table' and member.name and member.name:lower() == char_name:lower() then
+                        if member.buffs then
+                            for _, buff_id in pairs(member.buffs) do
+                                if buff_id and buff_id ~= 255 then
+                                    buffs[#buffs + 1] = buff_id
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+
+            -- Check if buffs changed since last frame (avoid unnecessary path changes)
+            local buffs_key = table.concat(buffs, ',')
+            if buffs_key ~= (buff_icons_last[char_name] or '') then
+                buff_icons_last[char_name] = buffs_key
+
+                -- Update icon images
+                for slot = 1, UI_Style.buff_max_icons do
+                    local icon_img = icon_slots[slot]
+                    if icon_img then
+                        if buffs[slot] then
+                            icon_img:path(windower.addon_path .. 'graphics/buffIcons/' .. buffs[slot] .. '.png')
+                            icon_img:visible(true)
+                        else
+                            icon_img:visible(false)
                         end
                     end
                 end

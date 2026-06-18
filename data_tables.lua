@@ -203,6 +203,10 @@ UI_Style = {
     -- Colors (RGBA integers 0-255)
     text_color = {r=240, g=255, b=255},
     stroke_color = {r=6, g=45, b=84},
+    -- Buff icon configuration
+    buff_icon_size = 14,
+    buff_icons_per_row = 7,
+    buff_max_icons = 32,
 }
 
 -- Padding offset to center the foreground bar inside the background border

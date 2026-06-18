@@ -9,11 +9,14 @@ local res = require('resources')
 -- UI & LAYOUT TABLES
 -- ====================================================================
 UI_Layout = {
-    base_x = 20,      
-    base_y = 200,      
-    column_width = 160, 
-    row_height = 18,    
-    bar_width = 15,     
+    base_x = 20,
+    base_y = 200,
+    column_width = 145,   -- Slightly narrower for compact layout
+    row_height = 16,      -- Tighter rows
+    bar_width = 100,      -- Bar width for timer foreground (matches header_width)
+    header_width = 100,   -- Header background width (narrower, fits name text)
+    header_height = 18,   -- Header background height
+    status_bar_gap = 30,  -- Reserved space below header for future HP/MP/TP bars
 }
 
 -- Note: char_columns removed in v2.0.0 — column positions now driven by settings_manager
@@ -186,10 +189,20 @@ avatar_icons = {
     ['Diabolos']    = 'spells/00304.png'
 }
 
--- Timer bar styling constants
+-- Timer bar styling constants (XivParty-inspired)
 UI_Style = {
-    bar_width = 120,
+    bar_width = 100,
     bar_height = 14,
+    -- Text styling
+    header_font = 'Arial',
+    header_font_size = 9,
+    header_stroke_width = 2,
+    label_font = 'Arial',
+    label_font_size = 9,
+    label_stroke_width = 1,
+    -- Colors (RGBA integers 0-255)
+    text_color = {r=240, g=255, b=255},
+    stroke_color = {r=6, g=45, b=84},
 }
 
 -- Padding offset to center the foreground bar inside the background border

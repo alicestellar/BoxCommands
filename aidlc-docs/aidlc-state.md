@@ -35,10 +35,11 @@
 ### CONSTRUCTION PHASE
 - [x] Unit 0: Debug & Stabilize Baseline - COMPLETED (1.1.1)
 - [x] Unit 1: Documentation & Cleanup - COMPLETED (1.2.0)
-- [ ] Unit 2: Settings & Configuration Foundation - NEXT
-- [ ] Unit 3: UI Visual Overhaul
+- [x] Unit 2: Settings & Configuration Foundation - COMPLETED (2.0.0)
+- [ ] Unit 3: UI Visual Overhaul - NEXT
 - [ ] Unit 4: Intelligent Targeting
 - [ ] Unit 5: Healing Spell Selection Algorithm
 - [ ] Unit 6: Nuking Spell Selection Algorithm
 - [ ] Unit 7: Debuff Resistance (Conditional)
 - [ ] Unit 8: Alliance Support
+- [ ] Unit 9: Party Status Bars + Buff/Debuff Icons

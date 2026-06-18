@@ -769,24 +769,30 @@ function trigger_pact_timer(avatar, pact_name)
 end
 
 -----------------------------------------------------------
--- Repositions all timer bars in a column after one expires.
--- Stacks remaining timers vertically without gaps.
+-- Repositions all timer bars and their labels in a column
+-- after one expires. Stacks remaining timers vertically
+-- without gaps.
 -- @param col_index  Column index to reposition (1-based)
 -----------------------------------------------------------
 function reposition_column_elements(col_index)
     local current_row = 0
     for _, timer in pairs(active_network_timers) do
         if timer.column == col_index then
-            local target_y = UI_Layout.base_y + (current_row * UI_Layout.row_height)
+            local target_y = UI_Layout.base_y + UI_Layout.status_bar_gap + (current_row * UI_Layout.row_height)
             local current_x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
             
             if timer.ui.bg then
                 timer.ui.bg:pos(current_x, target_y)
-                timer.ui.bg:size(120, 14)
+                timer.ui.bg:size(UI_Style.bar_width, UI_Style.bar_height)
             end
             
             if timer.ui.fg then
                 timer.ui.fg:pos(current_x + UI_Layout.bar_padding.x, target_y + UI_Layout.bar_padding.y)
+            end
+
+            -- Reposition the text label above the bar
+            if timer.label then
+                timer.label:pos(current_x + 2, target_y - 6)
             end
             
             current_row = current_row + 1
@@ -795,28 +801,46 @@ function reposition_column_elements(col_index)
 end
 
 -----------------------------------------------------------
--- Creates a new timer bar UI element (background + foreground).
--- Each timer gets its own image instances.
--- @param x  X position for the bar
--- @param y  Y position for the bar
--- @return Table with .bg and .fg image handles
+-- Creates a new timer bar UI element (background + foreground)
+-- with an overlaid text label showing the ability name.
+-- Each timer gets its own image and text instances.
+-- @param x           X position for the bar
+-- @param y           Y position for the bar
+-- @param label_text  Optional ability name to display on the bar
+-- @return Table with .bg, .fg image handles and .label text handle
 -----------------------------------------------------------
-function create_timer_ui(x, y)
+function create_timer_ui(x, y, label_text)
     local bar = {}
     
     bar.bg = images.new()
     bar.bg:fit(false)
     bar.bg:path(windower.addon_path .. 'graphics/bar_bg.png')
-    bar.bg:size(120, 14)
+    bar.bg:size(UI_Style.bar_width, UI_Style.bar_height)
     bar.bg:pos(x, y)
     bar.bg:show()
 
     bar.fg = images.new()
     bar.fg:fit(false)
     bar.fg:path(windower.addon_path .. 'graphics/bar_fg.png')
-    bar.fg:size(116, 10)
-    bar.fg:pos(x + 2, y + 2)
+    bar.fg:size(UI_Style.bar_width - 4, UI_Style.bar_height - 4)
+    bar.fg:pos(x + UI_Layout.bar_padding.x, y + UI_Layout.bar_padding.y)
     bar.fg:show()
+
+    -- Text label overlaid on the bar (transparent background, XivParty-style)
+    if label_text then
+        local unique_name = 'box_lbl_' .. tostring(os.clock()):gsub('%.', '') .. '_' .. tostring(math.random(1000, 9999))
+        local texts = require('texts')
+        bar.label = texts.new(unique_name)
+        bar.label:font(UI_Style.label_font)
+        bar.label:size(UI_Style.label_font_size)
+        bar.label:color(UI_Style.text_color.r, UI_Style.text_color.g, UI_Style.text_color.b)
+        bar.label:stroke_width(UI_Style.label_stroke_width)
+        bar.label:stroke_color(UI_Style.stroke_color.r, UI_Style.stroke_color.g, UI_Style.stroke_color.b)
+        bar.label:bg_visible(false)
+        bar.label:text(label_text)
+        bar.label:pos(x + 2, y - 6)
+        bar.label:show()
+    end
     
     return bar
 end

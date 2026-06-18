@@ -32,7 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 _addon.name    = 'BoxCommands'
 _addon.author  = 'Makaria'
-_addon.version = '2.0.0'
+_addon.version = '3.0.0'
 _addon.command = "box"
 
 local res = require('resources')

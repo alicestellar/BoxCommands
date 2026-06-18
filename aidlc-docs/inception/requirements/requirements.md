@@ -328,6 +328,19 @@
 
 Please let me know which TP polling approach you prefer (or a combination), and I'll finalize the requirement.
 
+### FR-14: Party Status Bars + Buff/Debuff Icons
+- **Priority**: Low (implement after all core systems are stable)
+- **Description**: Replicate XivParty's party status display within BoxCommands, eliminating the need to run both addons simultaneously.
+- **Acceptance Criteria**:
+  - HP, MP, and TP bars displayed per character (XivParty-style visual appearance).
+  - Bars use `get_party()` data for values (HP%, MP%, TP).
+  - Buff/debuff icons displayed in a grid per character using status icon assets.
+  - Buff data sourced from `get_party()` buff arrays.
+  - Layout coexists with timer bars — positioned to avoid overlap while remaining compact.
+  - Icon assets reused from XivParty's `assets/buffIcons/` directory (referenced for implementation).
+  - Supports same display rules as the rest of the UI (fixed slots, collapse setting, menu hiding).
+  - Goal: fully replaces XivParty addon for multi-boxing use cases.
+
 ---
 
 ## Extension Configuration

@@ -358,19 +358,14 @@ end
 
 -----------------------------------------------------------
 -- Returns the online character assigned to a given slot position.
+-- Only returns characters that are currently online.
 -- @param position  Slot number (1-6)
--- @return Character name at that position (online preferred), or first found
+-- @return Character name at that position if online, or nil
 -----------------------------------------------------------
 function settings_manager.get_slot_character(position)
-    -- Prefer online character at this position
+    -- Only return online characters
     for name, data in pairs(characters) do
         if data.position == position and data.online then
-            return name
-        end
-    end
-    -- Fallback: any character at this position
-    for name, data in pairs(characters) do
-        if data.position == position then
             return name
         end
     end

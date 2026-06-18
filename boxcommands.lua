@@ -109,6 +109,9 @@ windower.register_event('login', function(name)
     if initialize_column_headers then
         initialize_column_headers()
     end
+
+    -- Notify other boxes to refresh their UI (this character is now online)
+    windower.send_command('send @others box refreshui')
 end)
 
 -- ====================================================================

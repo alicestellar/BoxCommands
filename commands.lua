@@ -47,6 +47,9 @@ target_icons = {}
 -- Header background images
 header_bgs = {}
 
+-- Storage for HP/MP/TP status bar elements per character
+status_bars = {}
+
 -----------------------------------------------------------
 -- Creates column header backgrounds, styled text labels,
 -- and animated caster/target arrow indicators for the timer
@@ -60,11 +63,28 @@ function initialize_column_headers()
     for _, img_id in pairs(caster_icons) do img_id:destroy() end
     for _, img_id in pairs(target_icons) do img_id:destroy() end
     for _, img_id in pairs(header_bgs) do img_id:destroy() end
+    for _, char_bars in pairs(status_bars) do
+        for _, bar in pairs(char_bars) do
+            if type(bar) == 'table' then
+                if bar.bg then bar.bg:destroy() end
+                if bar.fill then bar.fill:destroy() end
+                if bar.label then bar.label:destroy() end
+            end
+        end
+        -- Cleanup TP dots
+        if char_bars.tp_dots then
+            for _, dot in pairs(char_bars.tp_dots) do
+                if dot.bg then dot.bg:destroy() end
+                if dot.fill then dot.fill:destroy() end
+            end
+        end
+    end
     
     column_headers = {}
     caster_icons = {}
     target_icons = {}
     header_bgs = {}
+    status_bars = {}
 
     -- PASS 1: Create header backgrounds FIRST (renders behind everything else)
     for i = 1, 6 do
@@ -122,6 +142,108 @@ function initialize_column_headers()
             t_img:pos(header_x + UI_Layout.header_width + 2, header_y + 2)
             t_img:visible(false)
             target_icons[char_name] = t_img
+
+            -- HP/MP/TP status bars (positioned below header)
+            local bar_y_start = header_y + UI_Layout.header_height + 2
+            local status_bar_height = 8
+            local status_bar_spacing = 10
+
+            local char_bars = {}
+
+            for bar_idx, bar_type in ipairs({'HP', 'MP', 'TP'}) do
+                local bar_y = bar_y_start + ((bar_idx - 1) * status_bar_spacing)
+                local label_width = 16
+                local bar_x = header_x + label_width
+                local bar_actual_width = UI_Layout.header_width - label_width
+
+                -- Background (border) — uses bar_bg.png which scales reliably
+                local bg = images.new()
+                bg:fit(false)
+                bg:path(windower.addon_path .. 'graphics/bar_bg.png')
+                bg:size(bar_actual_width, status_bar_height)
+                bg:pos(bar_x, bar_y)
+                bg:show()
+
+                -- Fill (resized based on percentage) — uses bar_fg.png which scales reliably
+                local fill = images.new()
+                fill:fit(false)
+                fill:path(windower.addon_path .. 'graphics/bar_fg.png')
+                fill:size(bar_actual_width - 2, status_bar_height - 2)
+                fill:pos(bar_x + 1, bar_y + 1)
+                fill:show()
+
+                -- Label text ("HP", "MP", "TP")
+                local lbl = texts.new('box_stat_' .. i .. '_' .. bar_type)
+                lbl:font(UI_Style.label_font)
+                lbl:size(7)
+                lbl:color(UI_Style.text_color.r, UI_Style.text_color.g, UI_Style.text_color.b)
+                lbl:stroke_width(1)
+                lbl:stroke_color(UI_Style.stroke_color.r, UI_Style.stroke_color.g, UI_Style.stroke_color.b)
+                lbl:bg_visible(false)
+                lbl:text(bar_type)
+                lbl:pos(header_x, bar_y - 1)
+                lbl:visible(true)
+
+                char_bars[bar_type] = {
+                    bg = bg,
+                    fill = fill,
+                    label = lbl,
+                    max_width = bar_actual_width - 2
+                }
+            end
+
+            -- TP dots: two squares side by side at the RIGHT end of the TP bar area
+            -- The TP bar is shortened to make room for them
+            local tp_bar_y = bar_y_start + (2 * status_bar_spacing)  -- TP is the 3rd bar (index 2)
+            local tp_bar_x = header_x + 16  -- same as bar_x
+            local tp_bar_actual_width = UI_Layout.header_width - 16
+            local dot_size = status_bar_height  -- full bar height (8px)
+            local dot_area_width = (dot_size * 2) + 2  -- two dots side by side with 2px gap
+            -- Position dots at the right edge of the TP bar area
+            local dot_start_x = tp_bar_x + tp_bar_actual_width - dot_area_width
+
+            char_bars.tp_dots = {}
+            -- Left dot (represents 1000 TP) — fills first
+            local dot1_bg = images.new()
+            dot1_bg:fit(false)
+            dot1_bg:path(windower.addon_path .. 'graphics/bar_bg.png')
+            dot1_bg:size(dot_size, dot_size)
+            dot1_bg:pos(dot_start_x, tp_bar_y)
+            dot1_bg:show()
+
+            local dot1_fill = images.new()
+            dot1_fill:fit(false)
+            dot1_fill:path(windower.addon_path .. 'graphics/bar_fg.png')
+            dot1_fill:size(dot_size - 2, dot_size - 2)
+            dot1_fill:pos(dot_start_x + 1, tp_bar_y + 1)
+            dot1_fill:visible(false)
+
+            -- Right dot (represents 2000 TP)
+            local dot2_x = dot_start_x + dot_size + 2
+            local dot2_bg = images.new()
+            dot2_bg:fit(false)
+            dot2_bg:path(windower.addon_path .. 'graphics/bar_bg.png')
+            dot2_bg:size(dot_size, dot_size)
+            dot2_bg:pos(dot2_x, tp_bar_y)
+            dot2_bg:show()
+
+            local dot2_fill = images.new()
+            dot2_fill:fit(false)
+            dot2_fill:path(windower.addon_path .. 'graphics/bar_fg.png')
+            dot2_fill:size(dot_size - 2, dot_size - 2)
+            dot2_fill:pos(dot2_x + 1, tp_bar_y + 1)
+            dot2_fill:visible(false)
+
+            char_bars.tp_dots = {
+                [1] = { bg = dot1_bg, fill = dot1_fill },
+                [2] = { bg = dot2_bg, fill = dot2_fill }
+            }
+            -- Store the reduced max width for TP bar (shortened to make room for dots)
+            char_bars.TP.max_width = tp_bar_actual_width - dot_area_width - 3
+            -- Also shrink the TP background bar to not overlap the dots
+            char_bars.TP.bg:size(tp_bar_actual_width - dot_area_width - 1, status_bar_height)
+
+            status_bars[char_name] = char_bars
         end
     end
 end
@@ -489,11 +611,15 @@ windower.register_event('prerender', function()
 
     -- ================================================================
     -- Menu hiding logic (FR-4f Phase 1)
-    -- Hide UI when menu is open UNLESS Ctrl or Alt is held (macro palette).
+    -- Hide UI when menu is open UNLESS:
+    -- - Ctrl or Alt is held (macro palette)
+    -- - Player is in combat (engaged status = 1)
     -- ================================================================
     local info = windower.ffxi.get_info()
     local modifier_active = ctrl_held or alt_held or (os.clock() - modifier_release_time) < 0.5
-    local menu_open = info and info.menu_open and not modifier_active
+    local pl_mob = windower.ffxi.get_mob_by_target('me')
+    local in_combat = pl_mob and pl_mob.status == 1
+    local menu_open = info and info.menu_open and not modifier_active and not in_combat
 
     if menu_open and not ui_hidden then
         -- Menu just opened — hide all UI elements
@@ -503,6 +629,22 @@ windower.register_event('prerender', function()
         for _, bg in pairs(header_bgs) do bg:visible(false) end
         for _, icon in pairs(caster_icons) do icon:visible(false) end
         for _, icon in pairs(target_icons) do icon:visible(false) end
+        for _, char_bars in pairs(status_bars) do
+            for key, bar in pairs(char_bars) do
+                if key ~= 'tp_dots' then
+                    if bar.bg then bar.bg:visible(false) end
+                    if bar.fill then bar.fill:visible(false) end
+                    if bar.label then bar.label:visible(false) end
+                end
+            end
+            -- Hide TP dots
+            if char_bars.tp_dots then
+                for _, dot in pairs(char_bars.tp_dots) do
+                    if dot.bg then dot.bg:visible(false) end
+                    if dot.fill then dot.fill:visible(false) end
+                end
+            end
+        end
         for _, timer in pairs(active_network_timers) do
             if timer.ui and timer.ui.bg then timer.ui.bg:visible(false) end
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(false) end
@@ -510,11 +652,26 @@ windower.register_event('prerender', function()
         end
         return
     elseif not menu_open and ui_hidden then
-        -- Menu closed (or Ctrl/Alt now held) — show all UI elements
+        -- Menu closed (or Ctrl/Alt now held or combat) — show all UI elements
         ui_hidden = false
         ui_hidden_since = 0
         for _, hdr in pairs(column_headers) do hdr:visible(true) end
         for _, bg in pairs(header_bgs) do bg:visible(true) end
+        for _, char_bars in pairs(status_bars) do
+            for key, bar in pairs(char_bars) do
+                if key ~= 'tp_dots' then
+                    if bar.bg then bar.bg:visible(true) end
+                    if bar.fill then bar.fill:visible(true) end
+                    if bar.label then bar.label:visible(true) end
+                end
+            end
+            -- Show TP dot backgrounds (fills controlled by prerender TP logic)
+            if char_bars.tp_dots then
+                for _, dot in pairs(char_bars.tp_dots) do
+                    if dot.bg then dot.bg:visible(true) end
+                end
+            end
+        end
         for _, timer in pairs(active_network_timers) do
             if timer.ui and timer.ui.bg then timer.ui.bg:visible(true) end
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(true) end
@@ -528,6 +685,20 @@ windower.register_event('prerender', function()
         ui_hidden_since = 0
         for _, hdr in pairs(column_headers) do hdr:visible(true) end
         for _, bg in pairs(header_bgs) do bg:visible(true) end
+        for _, char_bars in pairs(status_bars) do
+            for key, bar in pairs(char_bars) do
+                if key ~= 'tp_dots' then
+                    if bar.bg then bar.bg:visible(true) end
+                    if bar.fill then bar.fill:visible(true) end
+                    if bar.label then bar.label:visible(true) end
+                end
+            end
+            if char_bars.tp_dots then
+                for _, dot in pairs(char_bars.tp_dots) do
+                    if dot.bg then dot.bg:visible(true) end
+                end
+            end
+        end
         for _, timer in pairs(active_network_timers) do
             if timer.ui and timer.ui.bg then timer.ui.bg:visible(true) end
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(true) end
@@ -573,6 +744,76 @@ windower.register_event('prerender', function()
         end
         
         header_id:text(char_name:upper())
+    end
+
+    -- ================================================================
+    -- Update HP/MP/TP status bars from party data
+    -- ================================================================
+    local party_data = windower.ffxi.get_party()
+    local local_player = windower.ffxi.get_player()
+    
+    if party_data then
+        for char_name, bars in pairs(status_bars) do
+            -- Find this character in the party data
+            local hpp, mpp, tp = 0, 0, 0
+            
+            -- Check if this is the local player first (most reliable source)
+            if local_player and local_player.name and local_player.name:lower() == char_name:lower() then
+                hpp = local_player.vitals and local_player.vitals.hpp or 0
+                mpp = local_player.vitals and local_player.vitals.mpp or 0
+                tp = local_player.vitals and local_player.vitals.tp or 0
+            else
+                -- Search party data for this character
+                for key, member in pairs(party_data) do
+                    if type(member) == 'table' and member.name and member.name:lower() == char_name:lower() then
+                        hpp = member.hpp or 0
+                        mpp = member.mpp or 0
+                        tp = member.tp or 0
+                        break
+                    end
+                end
+            end
+
+            -- Update HP bar fill width
+            if bars.HP and bars.HP.fill then
+                local hp_width = math.max(1, math.floor(bars.HP.max_width * hpp / 100))
+                bars.HP.fill:size(hp_width, 6)
+            end
+
+            -- Update MP bar fill width
+            if bars.MP and bars.MP.fill then
+                local mp_width = math.max(1, math.floor(bars.MP.max_width * mpp / 100))
+                bars.MP.fill:size(mp_width, 6)
+            end
+
+            -- Update TP bar fill width (TP is 0-3000)
+            -- Bar shows current "segment" (0-1000 within each thousand)
+            -- Dots show completed thousands (top dot = 1000+, bottom dot = 2000+)
+            if bars.TP and bars.TP.fill then
+                local thousands = math.floor(tp / 1000)  -- 0, 1, or 2
+                local remainder = tp - (thousands * 1000)  -- 0-999 within current segment
+                local tp_pct = remainder / 1000  -- 0.0 to 0.999
+                
+                -- At exactly 3000 (capped), show full bar + 2 dots
+                if tp >= 3000 then
+                    thousands = 2
+                    tp_pct = 1.0
+                end
+                
+                local tp_width = math.max(1, math.floor(bars.TP.max_width * tp_pct))
+                bars.TP.fill:size(tp_width, 6)
+                
+                -- Update TP dot fills (backgrounds always visible, fills toggle)
+                if bars.tp_dots then
+                    for dot_idx = 1, 2 do
+                        local dot = bars.tp_dots[dot_idx]
+                        if dot and dot.fill then
+                            dot.fill:visible(thousands >= dot_idx)
+                        end
+                    end
+                end
+            end
+        end
     end
 
     -- ================================================================

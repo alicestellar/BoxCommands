@@ -16,7 +16,7 @@ UI_Layout = {
     bar_width = 100,      -- Bar width for timer foreground (matches header_width)
     header_width = 100,   -- Header background width (narrower, fits name text)
     header_height = 18,   -- Header background height
-    status_bar_gap = 30,  -- Reserved space below header for future HP/MP/TP bars
+    status_bar_gap = 34,  -- Reserved space below header for HP/MP/TP bars
 }
 
 -- Note: char_columns removed in v2.0.0 — column positions now driven by settings_manager

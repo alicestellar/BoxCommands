@@ -695,6 +695,11 @@ windower.register_event('prerender', function()
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(false) end
             if timer.label then timer.label:visible(false) end
         end
+        for _, char_icons in pairs(buff_icons) do
+            for _, icon in pairs(char_icons) do
+                icon:visible(false)
+            end
+        end
         return
     elseif not menu_open and ui_hidden then
         -- Menu closed (or Ctrl/Alt now held or combat) — show all UI elements

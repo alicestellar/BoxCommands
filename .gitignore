@@ -1,3 +1,6 @@
+# Personal scripts and reference files
+scripts/
+
 # Compiled Lua sources
 luac.out
 

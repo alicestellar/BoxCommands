@@ -120,9 +120,6 @@ end)
 windower.register_event('logout', function(name)
     settings_manager.set_online(name, false)
     settings_manager.save()
-
-    -- Notify other boxes to refresh their UI (this character is now offline)
-    windower.send_command('send @others box refreshui')
 end)
 
 -- ====================================================================

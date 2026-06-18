@@ -167,31 +167,40 @@ end
 -----------------------------------------------------------
 -- Re-reads character data from disk. Call before writing
 -- to avoid overwriting manual edits made while addon is running.
+-- SAFETY: Never replaces existing in-memory data with empty data.
 -----------------------------------------------------------
 function settings_manager.reload_characters()
     local f = loadfile(characters_file_path)
     if f then
         local ok, result = pcall(f)
-        if ok and type(result) == 'table' then
+        if ok and type(result) == 'table' and next(result) then
             characters = result
-        else
-            if not next(characters) then
-                characters = {}
+        elseif ok and type(result) == 'table' then
+            -- File parsed OK but returned empty table — keep existing memory
+            if next(characters) then
+                windower.add_to_chat(167, 'BoxCommands: characters.lua is empty on disk, keeping in-memory data.')
             end
+        else
             windower.add_to_chat(167, 'BoxCommands: Error reading characters.lua, keeping in-memory data.')
         end
     else
-        -- File doesn't exist yet — keep whatever is in memory (may be empty)
-        if not next(characters) then
-            characters = {}
+        -- File doesn't exist or can't be read — keep whatever is in memory
+        if next(characters) then
+            windower.add_to_chat(167, 'BoxCommands: Could not load characters.lua, keeping in-memory data.')
         end
     end
 end
 
 -----------------------------------------------------------
 -- Saves character data to the custom Lua file.
+-- SAFETY: Refuses to write if characters table is empty,
+-- preventing accidental data loss from failed reloads.
 -----------------------------------------------------------
 function settings_manager.save()
+    if not next(characters) then
+        windower.add_to_chat(167, 'BoxCommands: Refusing to save empty characters.lua — would erase existing data.')
+        return
+    end
     local content = serialize_characters(characters)
     local f = io.open(characters_file_path, 'w')
     if f then

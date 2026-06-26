@@ -1,6 +1,9 @@
 # Personal scripts and reference files
 scripts/
 
+# Launch batch files (behavior moved to autopol fork)
+Start_FFXI_*.bat
+
 # Runtime data files (auto-generated, per-instance)
 data/timers.lua
 

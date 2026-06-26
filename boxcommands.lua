@@ -357,6 +357,15 @@ windower.register_event('addon command', function (command, ...)
 	-- synctimers: Signal to immediately re-read the timer file (sent by other boxes after writing)
 	elseif command == 'synctimers' then
 		handle_synctimers()
+
+	-- undead: Toggle undead mode (healing spells target enemy when on)
+	elseif command == 'undead' then
+		undead_mode = not undead_mode
+		if undead_mode then
+			windower.add_to_chat(207, 'BoxCommands: Undead mode ON — healing spells will target enemies.')
+		else
+			windower.add_to_chat(207, 'BoxCommands: Undead mode OFF — healing spells default to <me> when targeting enemies.')
+		end
 	end
 end)
 

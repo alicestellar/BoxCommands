@@ -121,9 +121,13 @@
 - If a spell/ability targets only self or party members, and current target is an enemy, default to `<me>`.
 
 #### FR-6d: Healing on Undead-Type Enemies
-- When casting a healing spell while targeting an enemy, check if enemy's family group is in the "harmed by healing" table (undead/skeleton/ghost families).
-- If enemy IS in the table: cast on the enemy (healing damages them).
-- If enemy is NOT in the table: cast on self instead.
+- Toggle command: `//box undead` — switches undead mode on/off.
+- When undead mode is OFF (default): healing spells targeting an enemy fall back to `<me>`.
+- When undead mode is ON: healing spells pass through to the enemy target (for skilling up healing magic or damaging undead).
+- **Implementation note**: Mob family cannot be detected via Windower API (server-side only). A manual toggle is used instead of automatic detection. Toggle undead mode when entering an undead area or skilling up.
+
+#### FR-6e: BST Pet Abilities Always Target Self
+- All `/bstpet` commands (Ready abilities, both named and numeric) always use `<me>` as the target regardless of current target setting. The pet resolves its own target from the master's engagement.
 
 ### FR-7: Intelligent Healing Spell Selection
 - **Priority**: Medium
@@ -267,6 +271,11 @@
 - **Description**: Analyze the current party composition and determine the optimal weapon skill chain including magic bursts, then coordinate execution across all characters.
 - **Acceptance Criteria**:
 
+#### FR-13-Commands: Dual Command Interface
+- Two versions of the skillchain planner command:
+  1. **Plan-only**: `//box skillchain plan <element>` — Calculates the optimal skillchain for the specified element/property and outputs the full plan to chat via `windower.add_to_chat`. Shows who does what, in what order, which magic bursts, and expected elements. Does NOT execute anything.
+  2. **Execute**: `//box skillchain execute <element>` — Calculates the plan AND executes it using box commands. Automatically issues weapon skill commands to each character in sequence with appropriate timing. Aborts immediately if the target dies mid-chain.
+- The `<element>` argument specifies the desired skillchain property (e.g., `light`, `darkness`, `fragmentation`, `distortion`, etc.).
 #### FR-13a: TP Status Tracking
 - Use `get_party()` TP data directly at query time for same-party members (no disk writes).
 - Skillchain planner polls `get_party()` when triggered to determine who has 1000+ TP.
@@ -385,3 +394,4 @@ Documentation maintained continuously throughout.
 
 - **BST Sic timer**: Add charge timer support for `/pet "Sic"` command (charmed pets). Shares recast ID 102 with Ready. Low priority — only relevant for certain burning circle fights where charming is still used.
 - **PUP Maneuver timer testing**: Verify that charge timers display correctly for Puppetmaster maneuvers (recast ID 210, 3 charges, 10s base per charge). Not yet tested in-game.
+- **Test Unit 4 changes**: Verify all FR-6 target resolution logic in-game, including bstpet `<me>` targeting, self-only abilities, enemy-only fallback to `<bt>`, friendly-only fallback to `<me>` when enemy targeted, and undead healing detection.

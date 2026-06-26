@@ -442,6 +442,123 @@ function handle_dynamic_pact(category)
 	trigger_pact_timer(avatar_name, exact_pact_name)
 end
 
+-- ====================================================================
+-- TARGET RESOLUTION (FR-6: Intelligent Target Resolution)
+-- ====================================================================
+
+-- FR-6d: Undead mode toggle. When true, healing spells pass through
+-- to enemy targets (for skilling up or damaging undead).
+-- Toggle via: //box undead
+undead_mode = false
+
+-----------------------------------------------------------
+-- Checks if the current target is an enemy (mob/NPC, not player/party).
+-- Uses mob spawn_type and index range for identification.
+-- @return true if current target is an enemy mob
+-----------------------------------------------------------
+local function is_target_enemy()
+    local mob = windower.ffxi.get_mob_by_target('t')
+    if not mob then return false end
+    -- spawn_type 16 = monster/enemy mob
+    if mob.spawn_type == 16 then return true end
+    -- Fallback: check if it's an NPC-type with a claimable status
+    if mob.is_npc and mob.claim_id and mob.claim_id > 0 then return true end
+    -- If mob index is in monster range and has hpp
+    if mob.id and mob.id < 0x1000000 and mob.index and mob.index < 0x400 and mob.hpp then return true end
+    return false
+end
+
+-----------------------------------------------------------
+-- Determines if a spell is a healing/cure spell (for undead toggle check).
+-- @param spell_data  Spell resource entry
+-- @return true if the spell is a cure/healing spell
+-----------------------------------------------------------
+local function is_healing_spell(spell_data)
+    if not spell_data then return false end
+    local name = spell_data.en and spell_data.en:lower() or ''
+    -- Cure line, Curaga line, Cura line (but not Curse)
+    if name:find('cur') and not name:find('curs') then return true end
+    return false
+end
+
+-----------------------------------------------------------
+-- Resolves the appropriate target for a spell/ability based
+-- on its valid targets bitmask and the current target context.
+-- Implements FR-6a through FR-6e.
+--
+-- Target bitmask values (from Windower resources):
+--   1  = Self
+--   4  = Party/Alliance member
+--   5  = Self + Party/Alliance
+--   32 = Enemy
+--
+-- Rules:
+--   FR-6a: Self-only (targets == 1) → force <me>
+--   FR-6b: Enemy-only (enemy bit set, no self/party) → force <bt> if targeting friendly
+--   FR-6c: Friendly-only (no enemy bit) → <me> if targeting enemy (only if can self-target)
+--   FR-6d: Healing on enemy → pass through if undead_mode, else <me>
+--   FR-6e: BST pet abilities → always <me> (handled in bstpet_command directly)
+--
+-- @param targets_mask  Numeric bitmask from resource data
+-- @param current_target  Current target string (char name, <t>, <me>, <bt>, etc.)
+-- @param spell_data  Optional spell resource entry (for healing detection)
+-- @return Resolved target string to use in the command
+-----------------------------------------------------------
+function resolve_target(targets_mask, current_target, spell_data)
+    if not targets_mask then return current_target end
+
+    local can_target_self = (targets_mask % 2 >= 1)           -- bit 0
+    local can_target_party = (math.floor(targets_mask / 4) % 2 >= 1)  -- bit 2
+    local can_target_enemy = (math.floor(targets_mask / 32) % 2 >= 1) -- bit 5
+
+    -- FR-6a: Self-only abilities always target <me>
+    if targets_mask == 1 then
+        return '<me>'
+    end
+
+    -- FR-6b: Enemy-only abilities (can target enemy but NOT self/party)
+    if can_target_enemy and not can_target_self and not can_target_party then
+        -- If current target is not an enemy, switch to <bt>
+        if not is_target_enemy() and current_target ~= '<bt>' then
+            return '<bt>'
+        end
+        return current_target
+    end
+
+    -- Abilities that can target BOTH friendly and enemy (like Cure, Waltzes)
+    if can_target_enemy and (can_target_self or can_target_party) then
+        -- If targeting an enemy...
+        if is_target_enemy() then
+            -- FR-6d: Healing spells pass through to enemy only if undead_mode is on
+            if spell_data and is_healing_spell(spell_data) then
+                if undead_mode then
+                    return current_target  -- Cast on the enemy
+                else
+                    return '<me>'  -- Default to self
+                end
+            end
+            -- Non-healing spells that can target both: use current target as-is
+            return current_target
+        end
+        return current_target
+    end
+
+    -- Friendly-only abilities (no enemy bit)
+    if not can_target_enemy then
+        if is_target_enemy() then
+            -- Fall back to self ONLY if ability can target self
+            if can_target_self then
+                return '<me>'
+            end
+            -- Party-only (no self, no enemy): let it fail naturally
+            return current_target
+        end
+        return current_target
+    end
+
+    return current_target
+end
+
 -----------------------------------------------------------
 -- Casts the highest available tier of a spell on the
 -- current target. Sends pretimer/timer commands for the
@@ -452,7 +569,10 @@ function cast_spell(ability_name)
     local spell_data = select_highest_spell(ability_name)
     if not spell_data then return end
 
-    windower.send_command('input ' .. unify_prefix['/ma'] .. ' "' .. spell_data.en .. '" ' .. target)
+    -- FR-6: Intelligent target resolution based on spell valid targets
+    local resolved_target = resolve_target(spell_data.targets, target, spell_data)
+
+    windower.send_command('input ' .. unify_prefix['/ma'] .. ' "' .. spell_data.en .. '" ' .. resolved_target)
 
 	local castTime = spell_data.cast_time + 0.5
 	local local_player = windower.ffxi.get_player()
@@ -471,7 +591,15 @@ end
 -- @param input  Job ability name string
 -----------------------------------------------------------
 function job_ability(job, input)
-    windower.send_command('input ' .. unify_prefix['/ja'] .. ' \"' .. input .. '\" ' .. target)
+    -- FR-6: Resolve target based on ability valid targets
+    local ja_id = res.job_abilities:find(function(j) return j.en:lower() == input:lower() end)
+    local ja_data = ja_id and res.job_abilities[ja_id] or nil
+    local resolved_target = target
+    if ja_data and ja_data.targets then
+        resolved_target = resolve_target(ja_data.targets, target, nil)
+    end
+
+    windower.send_command('input ' .. unify_prefix['/ja'] .. ' \"' .. input .. '\" ' .. resolved_target)
     
 	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/ja'] .. ' 1.5 ' .. input)
 end
@@ -479,10 +607,11 @@ end
 -----------------------------------------------------------
 -- Executes a BST pet command and sends a pretimer.
 -- Supports both named abilities and numeric shortcuts (/bstpet 1, 2, etc.)
+-- Always targets <me> (FR-6e: pet resolves its own target from engagement).
 -- @param input  BST pet ability name or number
 -----------------------------------------------------------
 function bstpet_command(input)
-	windower.send_command('input /bstpet \"' .. input .. '\" ' .. target)
+	windower.send_command('input /bstpet \"' .. input .. '\" <me>')
     
 	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/ja'] .. ' 1.5 Ready')
 end
@@ -493,7 +622,15 @@ end
 -- @param input  Pet ability name
 -----------------------------------------------------------
 function pet_command(input)
-    windower.send_command('input ' .. unify_prefix['/pet'] .. ' \"' .. input .. '\" ' .. target)
+    -- FR-6: Resolve target based on pet ability valid targets
+    local pet_id = res.job_abilities:find(function(j) return j.en:lower() == input:lower() end)
+    local pet_data = pet_id and res.job_abilities[pet_id] or nil
+    local resolved_target = target
+    if pet_data and pet_data.targets then
+        resolved_target = resolve_target(pet_data.targets, target, nil)
+    end
+
+    windower.send_command('input ' .. unify_prefix['/pet'] .. ' \"' .. input .. '\" ' .. resolved_target)
     
 	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/pet'] .. ' 1.5 ' .. input)
 end

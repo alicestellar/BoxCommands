@@ -38,6 +38,7 @@ _addon.command = "box"
 local res = require('resources')
 local settings_manager = require('settings_manager')
 local macro_config = require('macro_config')
+local timer_sync = require('timer_sync')
 
 require ('commands')
 
@@ -76,6 +77,9 @@ if player_info then
     else
         caster = player_name
     end
+
+    -- Initialize timer sync with this character's name
+    timer_sync.init(player_name)
 end
 
 -- ====================================================================
@@ -110,6 +114,9 @@ windower.register_event('login', function(name)
         initialize_column_headers()
     end
 
+    -- Re-initialize timer sync for the new character
+    timer_sync.init(name)
+
     -- Notify other boxes to refresh their UI (this character is now online)
     windower.send_command('send @others box refreshui')
 end)
@@ -120,6 +127,7 @@ end)
 windower.register_event('logout', function(name)
     settings_manager.set_online(name, false)
     settings_manager.save()
+    timer_sync.clear_my_timers()
 end)
 
 -- ====================================================================
@@ -131,6 +139,8 @@ windower.register_event('unload', function()
         settings_manager.set_online(pl.name, false)
         settings_manager.save()
     end
+    -- Only clean up expired timers on unload (preserves active ones for reload)
+    timer_sync.clear_expired_timers()
 end)
 
 -- ====================================================================
@@ -343,6 +353,10 @@ windower.register_event('addon command', function (command, ...)
 	-- refreshui: Reload characters from settings and rebuild entire UI
 	elseif command == 'refreshui' then
 		handle_refreshui()
+
+	-- synctimers: Signal to immediately re-read the timer file (sent by other boxes after writing)
+	elseif command == 'synctimers' then
+		handle_synctimers()
 	end
 end)
 
@@ -472,12 +486,41 @@ function handle_refreshui()
 end
 
 -- ====================================================================
+-- SYNCTIMERS HANDLER: Force immediate timer file re-read
+-- ====================================================================
+
+-----------------------------------------------------------
+-- Forces an immediate re-read of the timer file and syncs
+-- any new/removed timers from other boxes into the local UI.
+-- Called when another box broadcasts 'synctimers' after writing.
+-----------------------------------------------------------
+function handle_synctimers()
+    local ts = require('timer_sync')
+    ts.force_poll()
+end
+
+-- ====================================================================
 -- INITIAL SETUP ON LOAD
 -- ====================================================================
 setupCommands()
 
 if initialize_column_headers then
     initialize_column_headers()
+end
+
+-- Restore any active timers from the file (survives addon reload)
+local my_timers = timer_sync.get_my_active_timers()
+for timer_key, entry in pairs(my_timers) do
+    create_network_timer(
+        entry.total_duration, entry.total_duration, entry.ability_type,
+        entry.ability_name, timer_sync.get_character(),
+        entry.column, entry.charges or 0, entry.max_charges or 0, entry.charge_base or 0
+    )
+    -- Override start_time to use the file's os.time() value for accurate tracking
+    if active_network_timers[entry.ability_name] then
+        active_network_timers[entry.ability_name].from_file = true
+        active_network_timers[entry.ability_name].start_time = entry.start_time
+    end
 end
 
 -- Notify other boxes to refresh their UI (this character is now online)

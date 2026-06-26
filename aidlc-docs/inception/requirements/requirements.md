@@ -231,23 +231,36 @@
 
 ### FR-11: Charge-Based Timer Display
 - **Priority**: Medium (implement alongside Unit 3 UI overhaul)
-- **Description**: Abilities with multiple charges display charge indicators next to timer bars.
+- **Description**: Abilities with multiple charges display charge indicators next to timer bars to show queued charges still on cooldown.
 - **Acceptance Criteria**:
-  - Dot indicators appear next to the timer bar for abilities with 2+ charges on cooldown.
-  - Dots styled with blue outline matching XivParty text style (stroke #062D54C8).
-  - One dot per additional charge beyond the one currently being tracked by the timer.
-  - When a charge finishes, one dot disappears and the timer refreshes to the remaining charge's cooldown.
+  - The timer bar itself represents the first charge currently counting down.
+  - Dots represent additional charges queued behind it (still on cooldown after the current bar expires).
+  - Number of dots = (max charges for ability - 1). The bar is the "last" dot visually.
+    - BST Ready (3 max charges): 2 dots + 1 bar
+    - SCH Stratagems: (max charges based on SCH level/JP - 1) dots + 1 bar
+  - Dots use the same graphic pattern as TP dots: `bar_bg.png` background + `bar_fg.png` fill squares, same size as TP dots.
+  - A filled dot = that charge is still on cooldown. An empty (background-only) dot = that charge is already available.
+  - When a charge is used, its dot fills (another charge now on cooldown).
+  - When the bar finishes, one dot unfills (a charge became available) and the bar resets to the next charge's cooldown if any remain.
+  - Dots positioned to the right of the timer bar (same layout as TP dots).
+  - Timer bar is shortened to accommodate the dots (same as TP bar).
   - Applies to: BST Ready (recast ID 102), SCH Stratagems (recast ID 231), and any other charge-based abilities identified.
 
 ### FR-12: Timer Sync via Shared File
 - **Priority**: Medium (implement alongside Unit 3 or as part of timer system refactor)
-- **Description**: Replace send-command-based timer broadcasting with a shared temp file approach.
+- **Description**: Replace send-command-based timer broadcasting with a shared temp file approach. Also poll `characters.lua` for online status changes to detect logouts without IPC.
 - **Acceptance Criteria**:
-  - Timer data written to a shared temp file (source character, timer name, max duration, current remaining, charges if applicable).
-  - Lightweight IPC command (`box updatetimers`) signals all boxes to refresh from the file.
-  - Source character responsible for creating and destroying its timer entries.
-  - No duplicate timers on refresh; no timer resets on update signal.
-  - Stale entries cleaned up gracefully (e.g., if source character disconnects).
+  - Timer data written to a shared temp file by each box for its own timers only.
+  - Each timer entry contains: source character, timer name, ability type, column, **start time** (`os.clock()` epoch at cast), and **total duration**. Charges field included if applicable.
+  - All boxes poll the timer file every 5 seconds.
+  - On read, each box calculates `time_left = total_duration - (os.clock() - start_time)` to determine current remaining time — late-joining boxes pick up mid-flight timers at the correct position.
+  - Timers where `time_left <= 0` are not displayed (natural expiry).
+  - Timers where source character has `online = false` in `characters.lua` are not displayed.
+  - Each box only ever writes/modifies its own timer entries. Never touches another box's entries.
+  - Expired entries from other boxes are left in the file (harmless, ignored by readers). Source box cleans its own stale entries on next write.
+  - No duplicate timers on refresh; no timer resets on re-read.
+  - Same 5-second poll also re-reads `characters.lua` online status. If a character went offline, rebuild UI (replaces the need for `send @others box refreshui` on logout).
+  - **Known limitation**: If a box crashes without writing `online = false`, that character remains "online" in the UI until they log back in or the file is manually corrected. No heartbeat system — accepted tradeoff for simplicity and reduced disk writes.
 
 ### FR-13: Automated Skillchain Planner with Magic Burst Coordination
 - **Priority**: Low (complex feature, implement after core systems are stable)
@@ -365,3 +378,10 @@ Please let me know which TP polling approach you prefer (or a combination), and 
 8. Alliance support (FR-10)
 
 Documentation maintained continuously throughout.
+
+---
+
+## Optional Improvements / Future Testing
+
+- **BST Sic timer**: Add charge timer support for `/pet "Sic"` command (charmed pets). Shares recast ID 102 with Ready. Low priority — only relevant for certain burning circle fights where charming is still used.
+- **PUP Maneuver timer testing**: Verify that charge timers display correctly for Puppetmaster maneuvers (recast ID 210, 3 charges, 10s base per charge). Not yet tested in-game.

@@ -750,7 +750,9 @@ function trigger_pact_timer(avatar, pact_name)
     local ward_label = pact_name
 
 	local col = get_character_column(caster)
-    windower.send_command('send @all box timerui ' .. recast_duration .. ' ' .. recast_duration .. ' ' .. caster .. ' ' .. unify_prefix['/pet'] .. ' ' .. col .. ' ' .. recast_label)
+    local ts = require('timer_sync')
+    ts.add_timer(recast_label, recast_duration, recast_label, unify_prefix['/pet'], col, 0, 0)
+    create_network_timer(recast_duration, recast_duration, unify_prefix['/pet'], recast_label, caster, col, 0, 0, 0)
 
     if pact_wards.durations[pact_name] then
         local ward_duration = pact_wards.durations[pact_name]
@@ -763,9 +765,12 @@ function trigger_pact_timer(avatar, pact_name)
             end
         end
 		
-        local col = get_character_column(caster)
-    windower.send_command('send @all box timerui ' .. ward_duration .. ' ' .. ward_duration .. ' ' .. caster .. ' ' .. unify_prefix['/pet'] .. ' ' .. col .. ' ' .. ward_label)
+        ts.add_timer(ward_label, ward_duration, ward_label, unify_prefix['/pet'], col, 0, 0)
+        create_network_timer(ward_duration, ward_duration, unify_prefix['/pet'], ward_label, caster, col, 0, 0, 0)
     end
+
+    -- Signal other boxes to check the timer file now
+    windower.send_command('send @others box synctimers')
 end
 
 -----------------------------------------------------------
@@ -780,10 +785,11 @@ function reposition_column_elements(col_index)
         if timer.column == col_index then
             local target_y = UI_Layout.base_y + UI_Layout.status_bar_gap + (current_row * UI_Layout.row_height)
             local current_x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
+            local effective_bar_width = timer.bar_width or UI_Style.bar_width
             
             if timer.ui.bg then
                 timer.ui.bg:pos(current_x, target_y)
-                timer.ui.bg:size(UI_Style.bar_width, UI_Style.bar_height)
+                timer.ui.bg:size(effective_bar_width, UI_Style.bar_height)
             end
             
             if timer.ui.fg then
@@ -793,6 +799,18 @@ function reposition_column_elements(col_index)
             -- Reposition the text label above the bar
             if timer.label then
                 timer.label:pos(current_x + 2, target_y - 6)
+            end
+
+            -- Reposition charge dots to the right of the shortened bar
+            if timer.charge_dots then
+                local dot_size = 8
+                local dot_start_x = current_x + effective_bar_width + 2
+                for dot_idx, dot in pairs(timer.charge_dots) do
+                    local dot_x = dot_start_x + ((dot_idx - 1) * (dot_size + 2))
+                    local dot_y = target_y + math.floor((UI_Style.bar_height - dot_size) / 2)
+                    if dot.bg then dot.bg:pos(dot_x, dot_y) end
+                    if dot.fill then dot.fill:pos(dot_x + 1, dot_y + 1) end
+                end
             end
             
             current_row = current_row + 1

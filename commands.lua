@@ -478,12 +478,13 @@ end
 
 -----------------------------------------------------------
 -- Executes a BST pet command and sends a pretimer.
--- @param input  BST pet ability name
+-- Supports both named abilities and numeric shortcuts (/bstpet 1, 2, etc.)
+-- @param input  BST pet ability name or number
 -----------------------------------------------------------
 function bstpet_command(input)
 	windower.send_command('input /bstpet \"' .. input .. '\" ' .. target)
     
-	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/bstpet'] .. ' 1.5 ' .. input)
+	windower.send_command('send ' .. caster .. ' box pretimer ' .. caster .. ' ' .. unify_prefix['/ja'] .. ' 1.5 Ready')
 end
 
 -----------------------------------------------------------
@@ -536,9 +537,11 @@ end
 
 -----------------------------------------------------------
 -- Queries the game for an ability's recast duration and
--- broadcasts a timerui command to all characters.
+-- writes it to the shared timer file for all boxes to read.
 -- Handles spell recasts, JA recasts, and special cases
 -- (stratagems, maneuvers, BST ready).
+-- For charge-based abilities, calculates charges on cooldown
+-- and per-charge recast time.
 -- @param abilityType  Unified prefix ('/ma', '/ja', etc.)
 -- @param abilityName  Ability name string
 -- @param caster       Character name who used the ability
@@ -548,6 +551,9 @@ function get_duration(abilityType, abilityName, caster)
     local main_job = windower.ffxi.get_player().main_job
     
     local name_lower = abilityName:lower()
+    local charges_on_cooldown = 0
+    local max_charges = 0
+    local charge_base = 0
 
     if abilityType == unify_prefix['/ma'] then
         local spell_recasts = windower.ffxi.get_spell_recasts()
@@ -567,49 +573,175 @@ function get_duration(abilityType, abilityName, caster)
 		local ja_data = res.job_abilities[ja_id]
 		abilityName = ja_data and ja_data['en'] or abilityName
 
-		if type(ja_data) == 'table' and ja_data.recast_id then
+		-- Check if this is a stratagem (recast_id 231) or another shared-recast ability
+		local is_stratagem = false
+		if type(ja_data) == 'table' then
+			-- Stratagems share recast_id 231 and have type "Scholar"
+			-- Note: Light Arts (228) and Dark Arts (232) have different recast_ids
+			if ja_data.recast_id == 231 then
+				is_stratagem = true
+			end
+		end
+		-- Fallback: known stratagem names (in case resource lookup failed)
+		-- Does NOT include Light Arts or Dark Arts (those have separate recasts)
+		if not is_stratagem then
+			local stratagem_names = S{
+				'addendum: white', 'addendum: black',
+				'penury', 'celerity', 'accession', 'rapture', 'altruism', 'tranquility',
+				'perpetuance', 'immanence', 'ebullience', 'parsimony', 'alacrity',
+				'manifestation', 'indulgence', 'focalization', 'equanimity',
+				'enlightenment', 'stormsurge', 'klimaform'
+			}
+			if stratagem_names:contains(name_lower) then
+				is_stratagem = true
+			end
+		end
+
+		-- For stratagems, always use the shared recast timer
+		if is_stratagem then
+			duration = ja_recasts[231] or 0
+			abilityName = "Stratagems"
+		elseif type(ja_data) == 'table' and ja_data.recast_id then
 			duration = ja_recasts[ja_data.recast_id] or 0
 		end
         
-        -- Fallback overrides for shared-recast abilities
+        -- Fallback overrides for shared-recast abilities (only if duration still 0)
         if duration == 0 then
-            if main_job == 'SCH' and (name_lower:contains('stratagem') or name_lower:contains('arts')) then
+            local pl_check = windower.ffxi.get_player()
+            local sub_job = pl_check and pl_check.sub_job or ''
+            if (main_job == 'SCH' or sub_job == 'SCH') and (name_lower:contains('stratagem') or name_lower:contains('arts')) then
                 duration = ja_recasts[231] or 0
 				abilityName = "Stratagems"
-            elseif main_job == 'PUP' and name_lower:contains('maneuver') then
+				is_stratagem = true
+            elseif (main_job == 'PUP' or sub_job == 'PUP') and name_lower:contains('maneuver') then
                 duration = ja_recasts[210] or 0
 				abilityName = "Maneuver"
-            elseif main_job == 'BST' then
+            elseif (main_job == 'BST' or sub_job == 'BST') and name_lower == 'ready' then
                 duration = ja_recasts[102] or 0
 				abilityName = "Ready"
             end
+        end
+
+        -- Detect charge-based abilities and calculate charge info
+        local charge_info = get_charge_info(abilityName, main_job, duration)
+        if charge_info then
+            charge_base = charge_info.charge_base
+            max_charges = charge_info.max_charges
+            charges_on_cooldown = charge_info.charges_on_cooldown
+            -- Keep duration as the FULL total recast (all charges)
+            -- The prerender will use fmod to show per-charge bar progress
         end
     end
 
     if duration > 0 then
         local col = get_character_column(caster)
-        windower.send_command('send @all box timerui ' .. duration .. ' ' .. duration .. ' ' .. caster .. ' ' .. abilityType .. ' ' .. col .. ' "' .. abilityName .. '"')
+        local ts = require('timer_sync')
+        ts.add_timer(abilityName, duration, abilityName, abilityType, col, charges_on_cooldown, max_charges, charge_base)
+        -- Also create local UI timer immediately (don't wait for poll)
+        create_network_timer(duration, duration, abilityType, abilityName, caster, col, charges_on_cooldown, max_charges, charge_base)
+        -- Signal other boxes to check the file now
+        windower.send_command('send @others box synctimers')
     end
+end
+
+-----------------------------------------------------------
+-- Determines charge info for charge-based abilities.
+-- Returns nil for non-charge-based abilities.
+-- @param ability_name  Normalized ability name
+-- @param main_job      Player's main job abbreviation
+-- @param total_recast  Total recast duration from get_ability_recasts()
+-- @return Table with: charge_base, max_charges, charges_on_cooldown, next_charge_recast
+--         or nil if not a charge-based ability
+-----------------------------------------------------------
+function get_charge_info(ability_name, main_job, total_recast)
+    local charge_base = 0
+    local max_charges = 0
+
+    if ability_name == "Ready" then
+        -- BST Ready: 3 charges, base 30s per charge (reduced by merits/JP/gear)
+        -- For now use base 30s; can refine later with merit/JP data
+        charge_base = 30
+        max_charges = 3
+    elseif ability_name == "Stratagems" then
+        -- SCH Stratagems: charges depend on SCH level (main or sub)
+        -- Level 10: 2, Level 30: 3, Level 50: 4, Level 70+: 5
+        local pl = windower.ffxi.get_player()
+        local sch_level = 0
+        if pl then
+            if pl.main_job == 'SCH' then
+                sch_level = pl.main_job_level or 0
+            elseif pl.sub_job == 'SCH' then
+                sch_level = pl.sub_job_level or 0
+            end
+        end
+        if sch_level >= 90 then max_charges = 5
+        elseif sch_level >= 70 then max_charges = 4
+        elseif sch_level >= 50 then max_charges = 3
+        elseif sch_level >= 30 then max_charges = 2
+        else max_charges = 1
+        end
+        -- Total recast is always 240s base. JP 550 gift reduces to 33s/charge (165s total).
+        local total_recast_base = 240
+        if pl and pl.main_job == 'SCH' and sch_level >= 99 then
+            local jp = pl.job_points and pl.job_points.SCH and pl.job_points.SCH.jp_spent or 0
+            if jp >= 550 then
+                total_recast_base = 165  -- 33s * 5 charges
+            end
+        end
+        charge_base = math.floor(total_recast_base / max_charges)
+    elseif ability_name == "Maneuver" then
+        -- PUP Maneuver: 3 charges, base 10s per charge
+        charge_base = 10
+        max_charges = 3
+    else
+        return nil  -- Not a charge-based ability
+    end
+
+    if charge_base <= 0 or max_charges <= 0 then return nil end
+
+    -- Calculate charges currently on cooldown and time to next charge
+    local charges_available = math.floor(((charge_base * max_charges) - total_recast) / charge_base)
+    local charges_on_cooldown = max_charges - charges_available
+    -- Dots shown = charges_on_cooldown - 1 (the bar itself represents one charge)
+    -- But we store total charges_on_cooldown; the UI will subtract 1 for dot display
+    local next_charge_recast = math.fmod(total_recast, charge_base)
+    if next_charge_recast <= 0 and total_recast > 0 then
+        next_charge_recast = charge_base
+    end
+
+    return {
+        charge_base = charge_base,
+        max_charges = max_charges,
+        charges_on_cooldown = charges_on_cooldown,
+        next_charge_recast = next_charge_recast,
+    }
 end
 
 -----------------------------------------------------------
 -- Creates a visual timer bar in the UI for a specific
 -- ability on a specific character's column. Stores the
 -- ability name as a text label on the bar.
+-- Uses os.clock() start_time for accurate time calculation.
+-- For charge-based abilities, renders dots to the right of the bar.
 -- @param duration         Total timer duration in seconds
--- @param charge_duration  Charge time (unused, reserved)
+-- @param charge_duration  Charge time (unused, reserved for FR-11)
 -- @param abilityType      Unified prefix for the ability
 -- @param abilityName      Display label for the timer
 -- @param casterName       Character who owns this timer
 -- @param col_index        UI column index for placement
+-- @param charges_on_cooldown  Number of charges currently on cooldown (0 = none)
+-- @param max_charges      Maximum charges for this ability (0 = not charge-based)
 -----------------------------------------------------------
-function create_network_timer(duration, charge_duration, abilityType, abilityName, casterName, col_index)
+function create_network_timer(duration, charge_duration, abilityType, abilityName, casterName, col_index, charges_on_cooldown, max_charges, charge_base_time)
     local label = abilityName
 	local index = casterName .. abilityName
 
 	-- Ensure numeric types (args come in as strings from command parsing)
 	duration = tonumber(duration) or 0
 	col_index = tonumber(col_index) or 1
+	charges_on_cooldown = tonumber(charges_on_cooldown) or 0
+	max_charges = tonumber(max_charges) or 0
+	charge_base_time = tonumber(charge_base_time) or 0
 
 	local x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
 
@@ -625,14 +757,94 @@ function create_network_timer(duration, charge_duration, abilityType, abilityNam
 	local new_timer = {
 		time_left = duration,
 		total_time = duration,
+		start_time = os.clock(),
 		column = col_index,
-		ui = create_timer_ui(x, y, abilityName)
+		ui = create_timer_ui(x, y, abilityName),
+		from_file = false,
+		charges_on_cooldown = charges_on_cooldown,
+		max_charges = max_charges,
+		charge_base = charge_base_time,
 	}
 	-- Store the label reference at the timer level for easy access
 	new_timer.label = new_timer.ui.label
+
+	-- Create charge dots if this is a charge-based ability
+	-- Dots shown = max_charges - 1 (the bar itself is one "charge")
+	local num_dots = max_charges > 0 and (max_charges - 1) or 0
+	if num_dots > 0 then
+		local dot_size = 8  -- Same as TP dots
+		local dot_area_width = (num_dots * dot_size) + ((num_dots - 1) * 2) + 2  -- dots + gaps + padding
+		-- Shrink the timer bar to make room for dots (like TP bar)
+		local bar_width = UI_Style.bar_width - dot_area_width - 2
+		if new_timer.ui.bg then
+			new_timer.ui.bg:size(bar_width, UI_Style.bar_height)
+		end
+		if new_timer.ui.fg then
+			new_timer.ui.fg:size(bar_width - 4, UI_Style.bar_height - 4)
+		end
+		-- Store reduced bar width for percentage calculations
+		new_timer.bar_width = bar_width
+
+		new_timer.charge_dots = {}
+		-- Position dots to the right of the shortened bar
+		local dot_start_x = x + bar_width + 2
+		for dot_idx = 1, num_dots do
+			local dot_x = dot_start_x + ((dot_idx - 1) * (dot_size + 2))
+			local dot_y = y + math.floor((UI_Style.bar_height - dot_size) / 2)
+
+			local dot_bg = images.new()
+			dot_bg:fit(false)
+			dot_bg:path(windower.addon_path .. 'graphics/bar_bg.png')
+			dot_bg:size(dot_size, dot_size)
+			dot_bg:pos(dot_x, dot_y)
+			dot_bg:show()
+
+			local dot_fill = images.new()
+			dot_fill:fit(false)
+			dot_fill:path(windower.addon_path .. 'graphics/bar_fg.png')
+			dot_fill:size(dot_size - 2, dot_size - 2)
+			dot_fill:pos(dot_x + 1, dot_y + 1)
+			-- Filled = charge is on cooldown (queued behind the bar)
+			-- charges_on_cooldown includes the one the bar is tracking,
+			-- so dots filled = charges_on_cooldown - 1
+			local dots_filled = charges_on_cooldown > 0 and (charges_on_cooldown - 1) or 0
+			dot_fill:visible(dot_idx <= dots_filled)
+
+			new_timer.charge_dots[dot_idx] = { bg = dot_bg, fill = dot_fill }
+		end
+	end
+
+	-- Destroy any existing timer with the same key (prevents orphaned UI elements)
+	local existing = active_network_timers[abilityName]
+	if existing then
+		if existing.ui and existing.ui.bg then existing.ui.bg:destroy() end
+		if existing.ui and existing.ui.fg then existing.ui.fg:destroy() end
+		if existing.label then existing.label:destroy() end
+		if existing.charge_dots then
+			for _, dot in pairs(existing.charge_dots) do
+				if dot.bg then dot.bg:destroy() end
+				if dot.fill then dot.fill:destroy() end
+			end
+		end
+		active_network_timers[abilityName] = nil
+	end
+
 	active_network_timers[abilityName] = new_timer
     
     reposition_column_elements(col_index)
+
+	-- If UI is currently hidden, immediately hide the new timer elements
+	if ui_hidden then
+		if new_timer.ui.bg then new_timer.ui.bg:visible(false) end
+		if new_timer.ui.fg then new_timer.ui.fg:visible(false) end
+		if new_timer.label then new_timer.label:visible(false) end
+		if new_timer.charge_dots then
+			for _, dot in pairs(new_timer.charge_dots) do
+				if dot.bg then dot.bg:visible(false) end
+				if dot.fill then dot.fill:visible(false) end
+			end
+		end
+	end
 end
 
 -- Prerender event: animates arrows, updates timer bars, repositions labels,
@@ -694,6 +906,12 @@ windower.register_event('prerender', function()
             if timer.ui and timer.ui.bg then timer.ui.bg:visible(false) end
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(false) end
             if timer.label then timer.label:visible(false) end
+            if timer.charge_dots then
+                for _, dot in pairs(timer.charge_dots) do
+                    if dot.bg then dot.bg:visible(false) end
+                    if dot.fill then dot.fill:visible(false) end
+                end
+            end
         end
         for _, char_icons in pairs(buff_icons) do
             for _, icon in pairs(char_icons) do
@@ -725,6 +943,12 @@ windower.register_event('prerender', function()
             if timer.ui and timer.ui.bg then timer.ui.bg:visible(true) end
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(true) end
             if timer.label then timer.label:visible(true) end
+            if timer.charge_dots then
+                for _, dot in pairs(timer.charge_dots) do
+                    if dot.bg then dot.bg:visible(true) end
+                    -- dot.fill visibility depends on charge state; just show bg
+                end
+            end
         end
         buff_icons_last = {}
     end
@@ -753,6 +977,11 @@ windower.register_event('prerender', function()
             if timer.ui and timer.ui.bg then timer.ui.bg:visible(true) end
             if timer.ui and timer.ui.fg then timer.ui.fg:visible(true) end
             if timer.label then timer.label:visible(true) end
+            if timer.charge_dots then
+                for _, dot in pairs(timer.charge_dots) do
+                    if dot.bg then dot.bg:visible(true) end
+                end
+            end
         end
         buff_icons_last = {}
     end
@@ -923,27 +1152,201 @@ windower.register_event('prerender', function()
     end
 
     -- ================================================================
-    -- Tick down active timers, update bar widths, reposition labels
+    -- Timer sync: poll file every 5 seconds, sync other boxes' timers
     -- ================================================================
+    local ts = require('timer_sync')
+    local timers_changed, all_timers, online_changed = ts.poll()
+
+    -- If online status changed, rebuild UI
+    if online_changed then
+        setupCommands()
+        if initialize_column_headers then
+            initialize_column_headers()
+        end
+    end
+
+    -- If timers changed from file, sync UI: create new, remove gone
+    if timers_changed then
+        local active_from_file = ts.get_active_timers()
+        local my_name = ts.get_character()
+
+        -- Build a set of timer keys that should currently exist from OTHER boxes
+        local expected_keys = {}
+        for char_name, timers in pairs(active_from_file) do
+            if char_name:lower() ~= (my_name or ''):lower() then
+                for timer_key, entry in pairs(timers) do
+                    local full_key = char_name .. ':' .. timer_key
+                    expected_keys[full_key] = entry
+                end
+            end
+        end
+
+        -- Create UI for new timers from other boxes
+        for full_key, entry in pairs(expected_keys) do
+            if not active_network_timers[full_key] then
+                local col_index = entry.column or 1
+                local x = UI_Layout.base_x + ((col_index - 1) * UI_Layout.column_width)
+                local row_count = 0
+                for _, timer in pairs(active_network_timers) do
+                    if timer.column == col_index then
+                        row_count = row_count + 1
+                    end
+                end
+                local y = UI_Layout.base_y + UI_Layout.status_bar_gap + (row_count * UI_Layout.row_height)
+
+                local file_charges = entry.charges or 0
+                local file_max_charges = entry.max_charges or 0
+                local num_dots = file_max_charges > 0 and (file_max_charges - 1) or 0
+
+                local new_file_timer = {
+                    time_left = entry.time_left,
+                    total_time = entry.total_duration,
+                    start_time = entry.start_time,
+                    column = col_index,
+                    ui = create_timer_ui(x, y, entry.ability_name),
+                    from_file = true,
+                    charges_on_cooldown = file_charges,
+                    max_charges = file_max_charges,
+                    charge_base = entry.charge_base or 0,
+                }
+                new_file_timer.label = new_file_timer.ui.label
+
+                -- Shrink bar and add dots for charge-based abilities
+                if num_dots > 0 then
+                    local dot_size = 8
+                    local dot_area_width = (num_dots * dot_size) + ((num_dots - 1) * 2) + 2
+                    local bar_width = UI_Style.bar_width - dot_area_width - 2
+                    if new_file_timer.ui.bg then
+                        new_file_timer.ui.bg:size(bar_width, UI_Style.bar_height)
+                    end
+                    if new_file_timer.ui.fg then
+                        new_file_timer.ui.fg:size(bar_width - 4, UI_Style.bar_height - 4)
+                    end
+                    new_file_timer.bar_width = bar_width
+
+                    new_file_timer.charge_dots = {}
+                    local dot_start_x = x + bar_width + 2
+                    for dot_idx = 1, num_dots do
+                        local dot_x = dot_start_x + ((dot_idx - 1) * (dot_size + 2))
+                        local dot_y = y + math.floor((UI_Style.bar_height - dot_size) / 2)
+
+                        local dot_bg = images.new()
+                        dot_bg:fit(false)
+                        dot_bg:path(windower.addon_path .. 'graphics/bar_bg.png')
+                        dot_bg:size(dot_size, dot_size)
+                        dot_bg:pos(dot_x, dot_y)
+                        dot_bg:show()
+
+                        local dot_fill = images.new()
+                        dot_fill:fit(false)
+                        dot_fill:path(windower.addon_path .. 'graphics/bar_fg.png')
+                        dot_fill:size(dot_size - 2, dot_size - 2)
+                        dot_fill:pos(dot_x + 1, dot_y + 1)
+                        local dots_filled = file_charges > 0 and (file_charges - 1) or 0
+                        dot_fill:visible(dot_idx <= dots_filled)
+
+                        new_file_timer.charge_dots[dot_idx] = { bg = dot_bg, fill = dot_fill }
+                    end
+                end
+
+                active_network_timers[full_key] = new_file_timer
+            end
+        end
+
+        -- Remove UI for timers from other boxes that no longer exist in file
+        -- Only targets keys with "CharName:" prefix (other boxes' timers)
+        -- Local character's restored timers use plain ability names (no colon)
+        local to_remove = {}
+        for label, timer in pairs(active_network_timers) do
+            if timer.from_file and label:find(':') and not expected_keys[label] then
+                if timer.ui and timer.ui.bg then timer.ui.bg:destroy() end
+                if timer.ui and timer.ui.fg then timer.ui.fg:destroy() end
+                if timer.label then timer.label:destroy() end
+                if timer.charge_dots then
+                    for _, dot in pairs(timer.charge_dots) do
+                        if dot.bg then dot.bg:destroy() end
+                        if dot.fill then dot.fill:destroy() end
+                    end
+                end
+                to_remove[#to_remove + 1] = label
+            end
+        end
+        for _, label in ipairs(to_remove) do
+            active_network_timers[label] = nil
+        end
+    end
+
+    -- ================================================================
+    -- Update active timers: calculate time_left, update bar widths
+    -- ================================================================
+    local now = os.clock()
+    local now_epoch = os.time()
     local updated_columns = {}
     local expired_timers = {}
     for label, timer in pairs(active_network_timers) do
         if not timer or not timer.ui or not timer.ui.fg or not timer.ui.bg then
             expired_timers[#expired_timers + 1] = label
         else
-            timer.time_left = timer.time_left - 0.0333
+            -- Calculate total remaining time
+            local total_remaining
+            if timer.from_file then
+                total_remaining = timer.total_time - (now_epoch - timer.start_time)
+            elseif timer.start_time then
+                total_remaining = timer.total_time - (now - timer.start_time)
+            else
+                timer.time_left = timer.time_left - 0.0333
+                total_remaining = timer.time_left
+            end
+            timer.time_left = total_remaining
             
-            if timer.time_left <= 0 then
+            if total_remaining <= 0 then
                 if timer.ui.bg then timer.ui.bg:destroy() end
                 if timer.ui.fg then timer.ui.fg:destroy() end
                 if timer.label then timer.label:destroy() end
+                if timer.charge_dots then
+                    for _, dot in pairs(timer.charge_dots) do
+                        if dot.bg then dot.bg:destroy() end
+                        if dot.fill then dot.fill:destroy() end
+                    end
+                end
                 updated_columns[timer.column] = true
                 expired_timers[#expired_timers + 1] = label
+
+                if not timer.from_file then
+                    ts.remove_timer(label)
+                end
             else
-                local percent = timer.time_left / timer.total_time
-                local new_width = math.max(1, math.floor(UI_Style.bar_width * percent))
+                local effective_bar_width = timer.bar_width or UI_Style.bar_width
+                local percent
+
+                -- Charge-based timers: bar shows current charge progress, dots show queued charges
+                if timer.max_charges and timer.max_charges > 0 and timer.charges_on_cooldown and timer.charges_on_cooldown > 0 then
+                    local cb = (timer.charge_base and timer.charge_base > 0) and timer.charge_base or 48
+                    -- Current charge bar progress: fmod of total remaining by charge_base
+                    local bar_remaining = math.fmod(total_remaining, cb)
+                    if bar_remaining <= 0 and total_remaining > 0 then
+                        bar_remaining = cb
+                    end
+                    percent = bar_remaining / cb
+
+                    -- Dynamically update dot fills based on current charges on cooldown
+                    local current_charges_on_cooldown = math.ceil(total_remaining / cb)
+                    local dots_filled = current_charges_on_cooldown > 0 and (current_charges_on_cooldown - 1) or 0
+                    if timer.charge_dots then
+                        for dot_idx, dot in pairs(timer.charge_dots) do
+                            if dot.fill then
+                                dot.fill:visible(dot_idx <= dots_filled)
+                            end
+                        end
+                    end
+                else
+                    -- Standard timer: simple percentage
+                    percent = total_remaining / timer.total_time
+                end
+
+                local new_width = math.max(1, math.floor((effective_bar_width - 4) * percent))
                 timer.ui.fg:size(new_width, UI_Style.bar_height - 4)
-                timer.ui.bg:size(UI_Style.bar_width, UI_Style.bar_height)
+                timer.ui.bg:size(effective_bar_width, UI_Style.bar_height)
 
                 -- Keep label positioned above its bar
                 if timer.label then

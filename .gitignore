@@ -1,6 +1,9 @@
 # Personal scripts and reference files
 scripts/
 
+# Runtime data files (auto-generated, per-instance)
+data/timers.lua
+
 # Compiled Lua sources
 luac.out
 

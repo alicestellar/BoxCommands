@@ -56,3 +56,13 @@
 - [ ] Charge timers (Ready, Stratagems) still work
 - [ ] Timer file sync still works between boxes
 - [ ] Menu hiding still works for all UI elements
+
+## Weapon Skill Command (new)
+
+- [ ] `//box ws Savage Blade` executes the weapon skill on the caster
+- [ ] WS routes to the active caster via IPC when caster is a different box
+- [ ] WS executes locally when caster is the local box
+- [ ] WS targets `<bt>` / `<t>` correctly when an enemy is targeted (FR-6 resolution)
+- [ ] WS with current target set to a party member resolves to `<bt>` (most WS are enemy-only)
+- [ ] Multi-word WS names (e.g., "Savage Blade", "Resolution") parse correctly
+- [ ] No recast timer is created for weapon skills (TP-based, expected)

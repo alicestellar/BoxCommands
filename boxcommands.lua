@@ -234,6 +234,25 @@ windower.register_event('addon command', function (command, ...)
 			job_ability(nil, abilityName) 
 		end
 
+	-- ws: Execute a weapon skill on the designated caster
+	elseif command == 'ws' then
+		local wsName = arg[1]
+		if arg[2] then
+			for i=2,#arg do
+				wsName = wsName .. ' ' .. arg[i]
+			end
+		end
+
+		local target_caster = caster
+		local local_player = windower.ffxi.get_player()
+
+		if local_player and local_player.name:lower() ~= target_caster:lower() then
+			local packet = '//box ws ' .. wsName
+			windower.send_command('send ' .. target_caster .. ' ' .. packet)
+		else
+			weapon_skill(wsName)
+		end
+
 	-- pet: Issue a pet command (SMN/PUP/DRG) on the designated caster
 	elseif command == 'pet' then
 		local abilityName = arg[1]

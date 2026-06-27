@@ -605,6 +605,24 @@ function job_ability(job, input)
 end
 
 -----------------------------------------------------------
+-- Executes a weapon skill on the current target.
+-- Weapon skills are TP-based (no recast timer needed).
+-- Applies FR-6 target resolution (most WS are enemy-targeted).
+-- @param input  Weapon skill name string
+-----------------------------------------------------------
+function weapon_skill(input)
+    -- FR-6: Resolve target based on weapon skill valid targets
+    local ws_id = res.weapon_skills:find(function(w) return w.en:lower() == input:lower() end)
+    local ws_data = ws_id and res.weapon_skills[ws_id] or nil
+    local resolved_target = target
+    if ws_data and ws_data.targets then
+        resolved_target = resolve_target(ws_data.targets, target, nil)
+    end
+
+    windower.send_command('input ' .. unify_prefix['/ws'] .. ' \"' .. input .. '\" ' .. resolved_target)
+end
+
+-----------------------------------------------------------
 -- Executes a BST pet command and sends a pretimer.
 -- Supports both named abilities and numeric shortcuts (/bstpet 1, 2, etc.)
 -- Always targets <me> (FR-6e: pet resolves its own target from engagement).

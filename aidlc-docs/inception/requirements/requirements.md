@@ -269,59 +269,79 @@
 ### FR-13: Automated Skillchain Planner with Magic Burst Coordination
 - **Priority**: Low (complex feature, implement after core systems are stable)
 - **Description**: Analyze the current party composition and determine the optimal weapon skill chain including magic bursts, then coordinate execution across all characters.
+- **Scope (first implementation)**: Party only. Alliance support (FR-13a alliance path), PUP automatons (FR-13g), and SMN dual-burst (FR-13i) are deferred.
 - **Acceptance Criteria**:
 
-#### FR-13-Commands: Dual Command Interface
-- Two versions of the skillchain planner command:
-  1. **Plan-only**: `//box skillchain plan <element>` — Calculates the optimal skillchain for the specified element/property and outputs the full plan to chat via `windower.add_to_chat`. Shows who does what, in what order, which magic bursts, and expected elements. Does NOT execute anything.
-  2. **Execute**: `//box skillchain execute <element>` — Calculates the plan AND executes it using box commands. Automatically issues weapon skill commands to each character in sequence with appropriate timing. Aborts immediately if the target dies mid-chain.
-- The `<element>` argument specifies the desired skillchain property (e.g., `light`, `darkness`, `fragmentation`, `distortion`, etc.).
-#### FR-13a: TP Status Tracking
-- Use `get_party()` TP data directly at query time for same-party members (no disk writes).
-- Skillchain planner polls `get_party()` when triggered to determine who has 1000+ TP.
-- Slight delay acceptable (game updates party TP every few seconds).
-- For alliance members outside the party: use counter-based IPC collection with fallback timeout.
-  - Controller sends `reporttp` to all alliance members.
-  - Each box responds with their TP status.
-  - Planner executes when all expected responses are in OR the fallback timeout elapses (whichever first).
-  - Missing responders are excluded from the plan (user notified).
-  - Fallback timeout is configurable in settings file (default TBD via testing).
+#### FR-13-Data: Skillchain Data Source (RESOLVED)
+- Import skillchain data from the SkillChains addon (Ivaar) included in `scripts/Skillchains/`:
+  - `skills.lua` → `weapon_skills` (WS ID → name + skillchain properties), `spells`, `job_abilities` (pet skills), `elements` (SCH Immanence).
+  - `Skillchains.lua` → `sc_info` table (skillchain combination rules, rank 3→4 extensions Light→Radiance / Darkness→Umbra, and magic-element mapping per skillchain).
+- WS data is stable (no updates since Voracious Resurgence Prime Weapons). Ship as a static table; supplement with WS damage-formula values (modifier %, TP bonus) where needed for damage estimation.
 
-#### FR-13b: Weapon Skill Availability
-- Must know which weapon skills each character has access to.
-- List should be as accurate as possible (main hand weapon type, skill level, unlocked WS).
+#### FR-13-Commands: Dual Command Interface (RESOLVED)
+- `//box skillchain plan <element>` — Calculates the optimal chain and outputs to chat via `windower.add_to_chat`, using the shorthand for each character + WS (shorthand sourced from macro book 23/24 titles in the Macro Editor data folder). Does NOT execute.
+- `//box skillchain execute <element>` — Builds a queue of `send <character> <weaponskill>` + `wait` commands and runs them. Aborts if target dies or claim is lost.
+- Any box can issue either command. The issuing player participates if able; no one is excluded.
+- `<element>` accepts only the goal (closing) elements, based on the element to be magic burst.
+- `plan <element>` / `execute <element>` means the chain must CLOSE on that element (may produce it earlier too). Priority: close on the element with the highest-damage WS landing last. Note: some WS are terminal (all level-4 chains are terminal) — account for this.
+- If the requested element is not achievable with current party WS + TP: **report failure** (Q2c = option A).
+
+#### FR-13a: TP Status Tracking (party-only for now)
+- Use `get_party()` TP data at query time to determine who has 1000+ TP.
+- `execute` requires current TP — if a character can perform a WS in the chain at command time, do so. Plan/execute both require live TP.
+- Alliance TP collection (IPC `reporttp`, fallback timeout) is deferred to the alliance upgrade.
+
+#### FR-13b: Weapon Skill Availability (RESOLVED)
+- Each box writes its available WS to the shared file on: login, job change, and weapon-type equipment change (including ranged). Do NOT rewrite on armor changes.
+- Source: `windower.ffxi.get_abilities().weapon_skills` (local player).
 
 #### FR-13c: Skillchain Optimization
-- Use as many full-TP characters as possible in the chain.
-- Magic burst as many weapon skills as possible.
-- Prioritize magic bursting LATER weapon skills in the chain (higher burst damage on stronger WS).
-- Place higher-damage weapon skills later in the chain (e.g., Savage Blade toward the end).
-- Skillchain damage itself is higher on later elements — optimize for total damage output.
+- Use as many full-TP characters as possible.
+- Magic burst as many WS as possible; prioritize bursting LATER WS in the chain.
+- Place higher-damage WS later in the chain. Optimize for total damage output.
+- Damage estimation uses the WS damage formula with per-WS values (modifier %, TP bonus — supplement the imported table as needed) plus easily obtainable Windower stats. Ignore values that can't be readily obtained.
 
 #### FR-13d: Rank 4 Skillchain Priority
-- If Light or Darkness (rank 3) can be extended to Radiance or Umbra (rank 4), always prefer the rank 4 chain.
+- If Light or Darkness (rank 3) can extend to Radiance or Umbra (rank 4), always prefer the rank 4 chain.
 
 #### FR-13e: Magic Burst Constraints
-- Each caster can only magic burst once per chain (unless summoner — see FR-13i).
+- Each caster magic bursts once per chain.
 - Assign burst casters to the highest-value burst windows.
 
 #### FR-13f: Beastmaster Pet Integration
-- BST pet weapon skills should be incorporated into the skillchain sequence.
-- Account for pet Ready ability availability and timing.
+- Incorporate BST pet WS into the chain. **Unlike summoner avatars, BST pets ARE viable skillchain steps** — pet TP moves cannot magic burst, so there is no opportunity cost to using them in the chain. Use them as chain steps freely (subject to the 6-step cap).
+- Do NOT check pet TP or pet TP modifiers. Check the BST character's Ready charge timer (already synced across boxes) to determine availability.
 
-#### FR-13g: Puppetmaster Automaton Research
-- Research how PUP automatons interact with skillchains (can they open/close? timing? WS list?).
-- Implement if feasible; document limitations if not.
+#### FR-13g: Puppetmaster Automaton (DEFERRED)
+- Deferred to later research — no test PUP available yet.
 
 #### FR-13h: Avatar Blood Pact Magic Bursting
-- Avatars should prioritize their most powerful non-Astral Flow pact for magic bursts.
-- Blood pact bursts should be placed LATER in the chain than standard nukes (higher damage).
-- SMN blood pact magic bursts take priority over other jobs' nukes.
+- **Summoner avatars are ALWAYS reserved for magic bursts when possible** (not used as skillchain steps). Because chains are hard-capped at 6 steps, an avatar's burst value exceeds its marginal contribution to an already-full chain.
+- Avatars prioritize their most powerful non-Astral Flow pact for magic bursts.
+- Blood pact bursts placed LATER in the chain than standard nukes. SMN bursts prioritized for a later burst window when feasible.
 
-#### FR-13i: Summoner Dual Burst Exception
-- Summoners with a nuking sub-job (BLM, RDM, GEO, SCH) may be able to low-level nuke an early skillchain AND avatar-burst a later one.
-- Requires testing to confirm timing is feasible.
-- If feasible, implement; if not, document as limitation.
+#### FR-13i: Summoner Dual Burst (DESCOPED)
+- Summoners do a single magic burst (no dual low-level + avatar burst). Always reserved for bursting (per FR-13h), prioritized for a later burst window if feasible.
+
+#### FR-13-Timing: Execution Timing & Window (RESOLVED via SkillChains addon)
+- Skillchain window: opens after the WS `delay` (default 3s per player WS) and the usable window is `delay + 8 - step` seconds wide — i.e., the window shrinks ~1s per chain step (step 1 → 7s, step 5 → 3s).
+- **Hard chain-length cap: 6 weapon skills.** The game auto-closes a chain at `step > 5` (or any level-4 terminal close). The window never drops to ≤1s because step never exceeds 6 (minimum window encountered is 3s at step 5). The planner MUST stop at 6 steps regardless of how many full-TP participants are available.
+- **Pet/summon reservation**: Because of the 6-step cap, a full party + pets could theoretically build a 7+ step chain — but we can't use it. Therefore summoner avatars should ALWAYS be reserved for magic bursts rather than skillchain steps whenever possible (their burst value exceeds their marginal contribution to an already-capped chain).
+- Do not send the next WS command until the previous WS has landed; the planned chain is stored while wait commands run.
+- WS-landed and skillchain detection via action packet listener (`ActionPacket.open_listener`, `weaponskill_finish` category + skillchain message IDs) — same mechanism the SkillChains addon uses.
+- If a WS misses, attempt to recalculate an alternative continuation and pivot if possible.
+
+#### FR-13-Burst: Magic Burst Coordination (RESOLVED)
+- After a WS closes a skillchain, signal burst casters to nuke within the burst window.
+- Burst spell selection reuses FR-8 nuking logic. Account for cast time — start casting early if needed so the spell lands inside the burst window.
+- Skillchain element → magic element mapping comes from `sc_info` (each skillchain lists its valid burst elements).
+
+#### FR-13-Abort: Abort & Pivot (RESOLVED)
+- Abort (cancel remaining queued steps, no notification) if the target dies or claim is lost.
+- For other disruptions (a character disconnects, gets stunned/silenced/interrupted, or a WS whiffs): attempt to pivot and finish the chain working around the problem rather than aborting.
+
+#### FR-13-Position: Positioning (RESOLVED)
+- Assume all participants are positioned within range. No range validation.
 
 ---
 

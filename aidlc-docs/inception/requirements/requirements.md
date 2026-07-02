@@ -383,6 +383,133 @@ Please let me know which TP polling approach you prefer (or a combination), and 
   - Supports same display rules as the rest of the UI (fixed slots, collapse setting, menu hiding).
   - Goal: fully replaces XivParty addon for multi-boxing use cases.
 
+#### FR-14a: HP Bar Color Thresholds (superseded by FR-19)
+- Originally a standalone HP-color note; expanded into the full configurable bar-theming system in **FR-19**. See FR-19 for the authoritative spec.
+
+### FR-15: Unified Elemental Selection Framework
+- **Priority**: Medium (depends on FR-16 cast-pathway tier handling for families that have tiers)
+- **Source**: JobMacros `elemental-spell-families.md` + user specs 2026-06-30/07-01.
+- **Description**: A single element-resolution layer that all elemental ability commands share. It resolves an element, maps it to the correct family member (spell/ability name), then hands that name to the cast/JA pathway. **Element selection is a distinct step performed FIRST; tier selection (II/III/etc.) is NOT part of this framework** (see FR-16).
+
+#### FR-15a: Element Resolution
+- Every elemental command resolves an element as either:
+  - **Specified**: an explicit element (`fire|ice|wind|earth|lightning|water|light|dark`), given inline (e.g. `box helix fire`) or via the persistent selector (FR-15b). Always that exact element.
+  - **Default**: derived from current day/weather (reuse existing `get_elements` day-vs-weather logic from `handle_storm`/`handle_helix`), applied per the ability's orientation (FR-15c).
+- Inline element arg always overrides the persistent selector.
+
+#### FR-15b: Persistent Element Selector
+- `box element <element|default>` — persistent setter (default value = `default`).
+- All elemental commands honor it when no inline element is passed.
+
+#### FR-15c: Orientation Classification
+- **Offensive** → attack WITH the day/weather element (use that element):
+  Helix, Storm, elemental nukes (single / -ga / -ra / -ja / Ancient), En-spells, Elemental Spikes, BRD Threnody, COR Quick Draw shots, elemental Ninjutsu, offensive Rune.
+- **Defensive** → defend FROM the day/weather element (use the member that protects against it):
+  Bar-element spells, BRD Carol, defensive Rune, bar-status spells.
+
+#### FR-15d: Per-Family Commands
+- `box helix [el]`, `box storm [el]`, `box bar [el]`, `box en [el]`, `box spikes [el]`, `box threnody [el]`, `box carol [el]`, `box shot [el]` (Quick Draw).
+- **Nuke categories (separate commands — they target differently):**
+  - `box nuke [el]` — single-target elemental nuke (`/ma "Fire" <t>`).
+  - `box nukega [el]` — AoE centered on the **target** (`-ga` line, BLM).
+  - `box nukera [el]` — AoE centered on the **caster** (`-ra` line, RDM).
+  - **Ancient Magic** (Flare/Freeze/Tornado/Quake/Burst/Flood) and `-ja` cumulative line may behave differently — **research needed before specifying their commands.** [FLAG]
+- No element arg = default mode; with arg = specified. Each maps element→member via the lookup tables in `elemental-spell-families.md`.
+- Resolved member name is passed to the cast/JA pathway (FR-16 handles tier). For nukes specifically, tier is governed by FR-8 efficiency logic (Unit 6); other families use strongest-available.
+- **Each elemental family is its own dedicated command** (like the existing `helix`/`storm`), not a single generic elemental command.
+
+#### FR-15e: Runes (dedicated selectors — element mapping is ambiguous)
+- `box rune off [el]` — offensive: rune that DEALS the element (Fire→Ignis, Ice→Gelus, Wind→Flabra, Earth→Tellus, Lightning→Sulpor, Water→Unda, Light→Lux, Dark→Tenebrae).
+- `box rune def [el]` — defensive: rune that RESISTS the element (Fire→Unda, Ice→Ignis, Wind→Gelus, Earth→Flabra, Lightning→Tellus, Water→Sulpor, Light→Tenebrae, Dark→Lux).
+
+#### FR-15f: Coverage Caveats
+- **Spikes** exist only for Fire/Ice/Lightning — if the resolved element has no spike, fall back or message (never error silently).
+- **Light/Dark** exist only for some families (Quick Draw, runes, Threnody, Carol, PLD/DRK En-light/dark). Nukes / bar / elemental-spikes / ninjutsu / elemental-En have no Light/Dark member. Light/Dark days are rare but possible — handle gracefully.
+- **GEO Indi-/Geo- are NOT elemental** (effect-keyed) — the element framework does NOT apply to them; handled solely by FR-17. [CONFIRMED 2026-07-01]
+
+#### FR-15g: Status-Resistance Membership (defensive side)
+- The defensive side additionally governs status-resistance abilities keyed by element via the FFXI element→status map (Fire→Amnesia/Plague, Ice→Paralysis, Wind→Silence, Earth→Petrification, Water→Poison, Dark→Blind, Light/Dark→Sleep; Thunder has no status-resistance member).
+- **IN**: bar-status spells (Barpoison, Barparalyze, Barsilence, Barpetrify, Baramnesia/Barvirus, Barblind, Barsleep + `-ra` AoE forms) and bar-element spells. Defending a resolved element also fires that element's matching bar-status spell.
+- **OUT**: status-inflicting abilities (enfeebles applying Poison, Paralyze, Slow, Silence, Break, Blind, Sleep, Bind, Dia/Bio, NIN status ninjutsu, BLU status spells) are NEVER auto-selected.
+- **RUN ward abilities (rune-keyed, NOT forced-element)**: Pflug (`ja pflug`) = status-ailment resistance per active rune (JA analogue of bar-status; no element arg, rides the rune selected by `box rune def/off`). Vallation (`ja vallation`) / Valiance (`ja valiance`) = reduce elemental DAMAGE per active rune. Plain `ja` macros, no element-status title — selecting the rune IS the element selection. Pflug also covers ailments with no bar-status: Bind/Ice, Gravity/Wind, Slow/Earth, Stun/Thunder, Curse/Dark, Charm/Light.
+- **Out of scope (not commands)**: passive Resist X traits, GEO Attunement, Aquaveil, food/gear/magic shields.
+
+#### FR-15h: Forced-Element Title Convention (MacroEditor concern — NOT addon behavior)
+- **This is a MacroEditor/JobMacros concern, not BoxCommands addon logic.** The titles exist only on the macros the user maintains in MacroEditor, so the user can glance at a macro and know which element/status a bar spell maps to. The BoxCommands addon does NOT read, write, or depend on these titles.
+- Recorded here for cross-reference only. Title set LOCKED (user 2026-07-01), one status per element: `FirePlag`, `IcePara`, `WindSile`, `EartPetr`, `ThunAmne`, `WatePois`, `LighSlee`, `DarkBlin`. Full rationale lives in JobMacros `elemental-spell-families.md` §10. Not part of any BoxCommands unit.
+
+### FR-16: Generalized Spell Tier Selection (Cast Pathway)
+- **Priority**: Medium (prerequisite for tiered elemental families and bard songs)
+- **Description**: Generalize the existing `select_highest_spell` tier-resolution logic in the cast pathway so element-resolved spell names (from FR-15) flow through a single tier-selection step, the same way WHM/BLM/NIN tiers are currently determined. **Element selection (FR-15) happens first; the resolved base spell name is then passed into this pathway, which applies the II/III/etc. tier.**
+- **Acceptance Criteria**:
+  - Two tier-selection modes:
+    1. **Strongest-available** (current behavior): always cast the highest castable tier. Used by bard songs and any family not governed by an efficiency algorithm.
+    2. **Efficiency-based**: governed by Units 5/6/7 (FR-7 healing, FR-8 nuking, FR-9 debuff) — NOT the default.
+  - **Bard songs always use strongest-available** (mode 1), explicitly unlike the cure/nuke/debuff families in Units 5/6/7.
+  - Tier handling reuses the existing roman-numeral / Ichi-Ni-San resolution mechanism already in `select_highest_spell`.
+  - The pathway accepts a base spell/song name and returns the highest castable tier the character can currently use (known, level/JP access, MP, recast).
+
+### FR-17: Geomancy Command (`geo <effect>`)
+- **Priority**: Medium
+- **Source**: JobMacros `geo.md` + user spec 2026-06-30.
+- **Description**: A single command takes a shared effect keyword (e.g. `fury`, `frailty`, `refresh`, `haste`) and decides prefix + target from the CURRENT target context. NOT part of the FR-15 element framework (geomancy is effect-keyed, not elemental).
+- **Acceptance Criteria**:
+  - **Target = enemy**: use Indicolure (`Indi-<Effect>`). Debuff effect → cast on the enemy (`<t>`/`<bt>`). Buff effect → cast on the Geomancer (`<me>`).
+  - **Target = a party member (directly targeted, not self)**: Indicolure (`Indi-<Effect>`) on that member. (Indicolure only goes on a party member when directly targeted.)
+  - **Target = self (`<me>`)**: Geocolure (`Geo-<Effect>`) — place the Luopan — regardless of buff/debuff.
+  - Requires a buff/debuff classification of the ~30 effect words:
+    - **Buffs**: Voidance, Precision, Regen, Attunement, Focus, Barrier, Refresh, Fury, Fend, Acumen, Haste, STR, DEX, VIT, AGI, INT, MND, CHR.
+    - **Debuffs**: Poison, Slow, Torpor, Slip, Languor, Paralysis, Vex, Frailty, Wilt, Malaise, Gravity, Fade.
+  - Builds the full spell name (`Indi-Fury` / `Geo-Fury`) and routes through the existing cast pipeline.
+  - Note: Geocolure is GEO main-job only; Indicolure works on a GEO subjob (reduced potency).
+
+### FR-18: Bard Song Variant Families
+- **Priority**: Medium (Threnody/Carol depend on FR-15 + FR-16; Etude depends on FR-16 only)
+- **Source**: JobMacros `brd.md`.
+- **Description**: Auto-select the correct variant of bard "family" songs that split into per-element or per-stat distinct songs (not numerically tiered in the variant axis, but each variant DOES have II/III tiers handled by FR-16).
+- **Acceptance Criteria**:
+  - **Threnody** (offensive, elemental): 8 elemental variants. Element resolved via FR-15 (offensive orientation); resulting song name passed to FR-16 for strongest-available tier (e.g. Fire Threnody II over Fire Threnody when both known).
+  - **Carol** (defensive, elemental): 8 elemental variants. Element resolved via FR-15 (defensive orientation); tier via FR-16.
+  - **Etude** (stat-based, NOT elemental): 7 stat variants (STR/DEX/VIT/AGI/INT/MND/CHR) + enhanced versions. Selected by a stat argument (`box etude <stat>`), NOT the element framework. Tier (enhanced version) via FR-16 strongest-available.
+  - All three always cast the strongest available version (FR-16 mode 1).
+
+### FR-19: Configurable Bar Color Theming
+- **Priority**: Medium (retrofit into existing status bars — Unit 9 area)
+- **Source**: User spec 2026-07-02. Supersedes FR-14a.
+- **Description**: Replace the baked-green bar fill with a neutral grayscale base image that is tinted at runtime via `image:color()`, so every bar (HP/MP/TP/timers) can be any color. HP and MP change color by depletion threshold; TP changes by segment. All colors configurable per bar type in the settings file.
+
+#### FR-19a: Grayscale Base Image
+- Generate a grayscale/luminance base bar from the existing green `bar_fg.png`, preserving the highlight → body → shadow brightness structure (so tinted bars keep the stylized look).
+- Same dimensions as `bar_fg.png` so scaling behavior is identical across all bars (resolves the concern that a different-sized image would need special HP scaling).
+- Use this single base for ALL bars (HP, MP, TP, and timer fills). `image:color(r,g,b)` provides all hue.
+- **Note**: The tinted green will be visually close to today's bar but not byte-identical (the current bar has variable saturation baked in that a single tint can't reproduce). Accepted by user 2026-07-02 — "close enough" as long as highlights/shadow are preserved.
+
+#### FR-19b: Default Behavior (out of the box)
+- All bars default to green.
+- **HP**: green when healthy, changing color as it drops (see thresholds).
+- **MP**: green normally, changing to red only at critical (≤25%).
+- **TP**: green throughout (segment/dot behavior unchanged).
+
+#### FR-19c: Threshold Model
+- **HP** and **MP**: a configurable **default** color (the "healthy" state, when the bar is above all thresholds — i.e., >75%) PLUS three configurable threshold colors at **75%, 50%, 25%**. Discrete steps, no interpolation, no flashing (user is photosensitive).
+  - HP default: >75% green, ≤75% bright yellow, ≤50% deep orange, ≤25% deep crimson.
+  - MP default: >25% green (default color), ≤25% red (i.e., the 75%/50% slots default to the same green as default).
+- **TP**: a configurable **default** color (when TP is below the first segment, <100% / building the first 1000) PLUS configurable colors at **100%, 200%, 300%** (the three segment-completion levels: 1000/2000/3000 TP).
+  - TP default: green at the default level and all segment levels.
+- Every color slot — including the default — is user-configurable (FR-19d). Nothing is hardcoded; defaults are just the shipped values.
+
+#### FR-19d: Settings File Configuration
+- Per-bar color config stored as global settings (Windower config XML, via `settings_manager` global settings — not per-character).
+- Schema (each color = RGB triple; the `default` slot is the always-configurable healthy/base color):
+  - `bar_colors.hp = { default, t75, t50, t25 }`
+  - `bar_colors.mp = { default, t75, t50, t25 }`
+  - `bar_colors.tp = { default, t100, t200, t300 }`
+- Applies to ALL boxes (local + every other character's bars).
+- Enables full theming (e.g., classic red HP / blue MP with darker shades as they deplete) by editing the settings.
+
+#### FR-19e: Timer Bars
+- Timer fills also use the grayscale base; default tint reproduces the current green. Optional theming can be layered later (not required for first implementation).
+
 ---
 
 ## Extension Configuration
@@ -403,8 +530,18 @@ Please let me know which TP polling approach you prefer (or a combination), and 
 4. Intelligent targeting (FR-6)
 5. Healing spell selection (FR-7)
 6. Nuking spell selection (FR-8)
-7. Debuff resistance (FR-9)
-8. Alliance support (FR-10)
+7. Cast pathway tier refactor (FR-16) — Unit 10
+8. Elemental selection core (FR-15a-c) — Unit 11
+9. Elemental family commands (FR-15d-g) — Unit 12
+10. Bard song families (FR-18) — Unit 13
+11. Geomancy command (FR-17) — Unit 14
+12. Debuff resistance (FR-9)
+13. Alliance support (FR-10)
+14. Automated skillchain planner (FR-13) — planning complete
+
+Note: Elemental units (10-14) sequenced after nuking (FR-8/Unit 6) so `box nuke`
+can use real efficiency-based tier logic. FR-15h (forced-element macro titles) is a
+MacroEditor concern, not a BoxCommands implementation item.
 
 Documentation maintained continuously throughout.
 
@@ -415,3 +552,4 @@ Documentation maintained continuously throughout.
 - **BST Sic timer**: Add charge timer support for `/pet "Sic"` command (charmed pets). Shares recast ID 102 with Ready. Low priority — only relevant for certain burning circle fights where charming is still used.
 - **PUP Maneuver timer testing**: Verify that charge timers display correctly for Puppetmaster maneuvers (recast ID 210, 3 charges, 10s base per charge). Not yet tested in-game.
 - **Test Unit 4 changes**: Verify all FR-6 target resolution logic in-game, including bstpet `<me>` targeting, self-only abilities, enemy-only fallback to `<bt>`, friendly-only fallback to `<me>` when enemy targeted, and undead healing detection.
+- **Research: Ancient Magic & `-ja` nuke commands (FR-15d)**: Flare/Freeze/Tornado/Quake/Burst/Flood (Ancient) and the `-ja` cumulative line may target/behave differently from standard nukes. User to research before specifying their commands in Unit 12.

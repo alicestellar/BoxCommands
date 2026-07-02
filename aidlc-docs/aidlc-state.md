@@ -51,6 +51,9 @@
 - [ ] Unit 8: Alliance Support (FR-10)
 - [ ] FR-13: Automated Skillchain Planner (planning complete, not implemented)
 - [ ] Unit 15: Configurable Bar Color Theming (FR-19) — independent UI retrofit, can be pulled forward anytime
+- [x] FR-20: Status Removal Spell Reference (research) - COMPLETED (2026-07-02)
+- [ ] Unit 16: Priority-Based Status Clear Command (FR-21) — depends on FR-20 research; largely independent, schedulable anytime
+- [ ] Unit 17: Debuff Priority Name Highlighting (FR-22) — pairs with FR-21; needs debuff tier list confirmed before build
 
 **Sequencing note (user-approved 2026-07-01)**: Elemental units (10-14) come AFTER
 Unit 6 so `box nuke` can use real FR-8 nuking logic for tier selection instead of a

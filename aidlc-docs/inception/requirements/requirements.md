@@ -492,7 +492,7 @@ Please let me know which TP polling approach you prefer (or a combination), and 
 
 #### FR-19c: Threshold Model
 - **HP** and **MP**: a configurable **default** color (the "healthy" state, when the bar is above all thresholds — i.e., >75%) PLUS three configurable threshold colors at **75%, 50%, 25%**. Discrete steps, no interpolation, no flashing (user is photosensitive).
-  - HP default: >75% green, ≤75% bright yellow, ≤50% deep orange, ≤25% deep crimson.
+  - HP default: >75% green, ≤75% bright yellow, ≤50% bright orange, ≤25% bright red. The low-HP colors are intentionally eye-catching ("I'm dying!" attention-grabbing).
   - MP default: >25% green (default color), ≤25% red (i.e., the 75%/50% slots default to the same green as default).
 - **TP**: a configurable **default** color (when TP is below the first segment, <100% / building the first 1000) PLUS configurable colors at **100%, 200%, 300%** (the three segment-completion levels: 1000/2000/3000 TP).
   - TP default: green at the default level and all segment levels.
@@ -509,6 +509,65 @@ Please let me know which TP polling approach you prefer (or a combination), and 
 
 #### FR-19e: Timer Bars
 - Timer fills also use the grayscale base; default tint reproduces the current green. Optional theming can be layered later (not required for first implementation).
+
+### FR-20: Status Removal Spell Reference (research — RESOLVED)
+- **Priority**: Reference data for FR-21.
+- **Source**: BG-Wiki Category:-na Spell, Erase, Esuna, Sacrifice pages (fetched 2026-07-02).
+- **Findings**:
+  - **No tiers.** Status removal spells have no II/III versions — each is single-version. (So FR-16 tier logic does NOT apply here.)
+  - **Standard `-na` spells are deterministic** — one cast fully removes that status type, no chance roll or potency calculation:
+
+    | Spell    | Removes                          |
+    | -------- | -------------------------------- |
+    | Poisona  | Poison                           |
+    | Paralyna | Paralysis                        |
+    | Blindna  | Blind                            |
+    | Silena   | Silence                          |
+    | Stona    | Petrification                    |
+    | Cursna   | Curse, Doom                      |
+    | Viruna   | Disease, Plague                  |
+
+  - **Special consideration — Cursna vs Doom**: Cursna can **fail** to remove Doom (it is not a guaranteed removal like the other `-na` effects). Doom removal may require repeated attempts (and is influenced by the caster's Cursna potency / Divine Benison gear). Treat Doom as high-priority and expect possible retries.
+
+  - **Erase** (Enhancing, party-target): removes ONE effect from a large separate pool — Bio, Dia, Gravity, Flash, Addle, Slow, Elegy, Requiem, Helix, elemental debuffs, attribute-down, status-down. No overlap with `-na` spells. Removes one at a time by internal priority.
+  - **Esuna** (WHM61, self-centered AoE 10'): removes 1 `-na`-type status the WHM currently has (Viruna/Cursna/Blindna/Poisona/Paralyna pool); with Afflatus Misery removes up to 2, extending into Erase's pool + Curse (Recovery). WHM must have the status to clear it for others. Does NOT remove enfeebling songs.
+  - **Sacrifice** (RDM): transfers one debuff from target to caster (by priority); the only spell that removes Curse (Recovery).
+  - **Cure spells** remove Sleep and Nightmare as a side effect (not classified as removal spells).
+  - **AoE**: WHM Divine Seal + Divine Veil turns `-na` spells into AoE; also spontaneous via gear.
+  - **Design implication**: the clear logic is a **debuff → removal-spell lookup plus a priority list**, NOT a potency/chance calculation. Pick the highest-priority debuff present, cast the spell that removes it. Erase handles its broad pool; `-na` spells handle their specific statuses.
+
+### FR-21: Priority-Based Status Clear Command
+- **Priority**: Medium
+- **Description**: A command that inspects the target character's active debuffs, selects the appropriate removal spell for the highest-priority debuff present (per a configurable priority list), and casts it on that character.
+- **Acceptance Criteria**:
+  - Command form: `box na <character>` (or `<t>`/`<me>`) — reads the target character's active status effects.
+  - Uses a **debuff → removal-spell map** (from FR-20): each removable status maps to its `-na` spell or to Erase's pool.
+  - Uses a **configurable priority list** (settings file) ranking which debuff to clear first when multiple are present (e.g., Silence > Paralysis > Poison > Erase-pool effects).
+  - Selects the removal spell for the top-priority debuff the caster can actually cast (known + level/JP access + MP). If the caster lacks that spell, fall to the next-priority debuff whose remover IS available.
+  - Casts the chosen spell on the target character via the existing cast pathway (respects FR-6 targeting — status removal is party/self only).
+  - One debuff cleared per invocation (matches how the spells work — each cast removes one status/type). Repeat the command to clear more.
+  - **Doom special case**: Cursna can fail to remove Doom (see FR-20). Doom should rank at/near the top of the priority list, and repeated invocations may be needed — a single cast is not guaranteed to clear it.
+  - **Caveat**: reliable debuff data comes from each box's own `get_player().buffs`; other characters' debuffs via `get_party()` may be incomplete. If cross-box accuracy is needed, share debuff state via the shared file (same pattern as jobs/timers) — flag for implementation.
+  - **Out of scope for v1**: Esuna multi-clear optimization, Sacrifice transfer logic, and Cure-for-Sleep. Can be layered later; v1 focuses on `-na` + Erase selection by priority.
+
+### FR-22: Debuff Priority Name Highlighting
+- **Priority**: Medium (UI enhancement, pairs with FR-21)
+- **Description**: Color a character's name in the UI based on the highest-priority tracked debuff currently on that character, so dangerous statuses are visible at a glance while multi-boxing.
+- **Acceptance Criteria**:
+  - Priority tiers drive the name color:
+    - **None / no tracked debuffs** → normal white name.
+    - **Low priority** → bright blue (debuffs worth removing but not dangerous).
+    - **Medium priority** → bright yellow (definitely want removed, but not immediately critical).
+    - **High priority** → bright red (critical, remove ASAP — e.g., Doom, Silence, Amnesia).
+  - The name shows the color of the HIGHEST-priority debuff present (a red-tier debuff overrides a yellow-tier, etc.).
+  - Applies to ALL boxes (every character's name in the UI).
+  - No flashing/pulsing (user is photosensitive) — solid color only.
+  - Uses the same debuff detection as FR-21 (each box's own `get_player().buffs` is authoritative; cross-box via shared file if needed).
+  - Reuses the header name text element (the character name shown in the column header) as the highlight target [TO CONFIRM].
+- **To confirm with user before implementation**:
+  - The exact list of debuffs to track and which tier (low/medium/high) each belongs to.
+  - Confirmation that the character name (header text) is the element to recolor (vs. some other indicator).
+  - Whether the tier→debuff mapping is configurable in the settings file (likely yes, consistent with FR-19/FR-21 config approach).
 
 ---
 
